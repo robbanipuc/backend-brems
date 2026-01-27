@@ -136,28 +136,34 @@ class EmployeeController extends Controller
     // Promote Employee
     public function promote(Request $request, $id)
     {
+        // 1. Validate ID, not just string
         $request->validate([
-            'new_designation' => 'required',
+            'new_designation_id' => 'required|exists:designations,id',
             'new_salary' => 'required|numeric',
             'promotion_date' => 'required|date'
         ]);
 
-        $employee = Employee::findOrFail($id);
+        $employee = Employee::with('designation')->findOrFail($id);
+        
+        // Find the object for the NEW designation to get its Title for history
+        $newDesignationObj = \App\Models\Designation::findOrFail($request->new_designation_id);
 
-        DB::transaction(function () use ($employee, $request) {
-            // 1. Create History
+        DB::transaction(function () use ($employee, $request, $newDesignationObj) {
+            // 2. Create History
+            // Note: We use the relationship $employee->designation->title for the old name
             \App\Models\PromotionHistory::create([
                 'employee_id' => $employee->id,
-                'old_designation' => $employee->designation,
-                'new_designation' => $request->new_designation,
+                'old_designation' => $employee->designation->title ?? 'Unknown', // Get String
+                'new_designation' => $newDesignationObj->title, // Get String
                 'old_salary' => $employee->current_salary,
                 'new_salary' => $request->new_salary,
                 'promotion_date' => $request->promotion_date
             ]);
 
-            // 2. Update Employee Profile
+            // 3. Update Employee Profile
+            // CRITICAL FIX: Update 'designation_id', not 'designation'
             $employee->update([
-                'designation' => $request->new_designation,
+                'designation_id' => $request->new_designation_id,
                 'current_salary' => $request->new_salary
             ]);
         });
