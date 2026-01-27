@@ -111,7 +111,7 @@ class EmployeeController extends Controller
     public function show(Request $request, $id)
     {
         $user = $request->user();
-        $employee = Employee::with(['office', 'transfers.fromOffice', 'transfers.toOffice', 'promotions'])
+        $employee = Employee::with(['office', 'designation', 'user', 'transfers.fromOffice', 'transfers.toOffice', 'promotions'])
                             ->findOrFail($id);
 
         // CHECK PERMISSIONS
@@ -224,7 +224,7 @@ class EmployeeController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $query = Employee::with('office');
+        $query = Employee::with(['office', 'designation']); 
 
         // CASE A: Regular Employee -> RETURN NOTHING
         if ($user->role === 'verified_user') {
@@ -377,6 +377,10 @@ class EmployeeController extends Controller
             $query->where('current_office_id', $request->office_id);
         }
 
+        if ($request->filled('designation_id')) {
+            $query->where('designation_id', $request->designation_id);
+        }
+
         return $query->orderBy('created_at', 'desc');
     }
 
@@ -459,6 +463,11 @@ class EmployeeController extends Controller
             if ($officeName) {
                 $filterParts[] = "Office: {$officeName}";
             }
+        }
+
+        if ($request->filled('designation_id')) {
+            $desName = \App\Models\Designation::find($request->designation_id)?->title;
+            if ($desName) $filterParts[] = "Rank: {$desName}";
         }
 
         // Join them (e.g., "Search: 'Khan', Office: HQ") or default to "All Records"
