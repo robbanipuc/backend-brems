@@ -58,10 +58,13 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
-            'options' => extension_loaded('pdo_mysql') ? [
-                PDO::ATTR_EMULATE_PREPARES => true,
-                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false, // <--- This fixes the SSL error
-            ] : [],
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                // If we are in Production (Render), use the System's SSL Certificate
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                
+                // If we are Local, disable verification. If Production, enable it.
+                PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => env('APP_ENV') === 'local' ? false : true,
+            ]) : [],
         ],
 
         'mariadb' => [
