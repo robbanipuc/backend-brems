@@ -6,24 +6,20 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('form_fields', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('form_id')->constrained()->onDelete('cascade');
-            $table->string('label'); // e.g. "Total Land Property (Acres)"
-            $table->string('type'); // e.g. "text", "number", "date"
+            $table->foreignId('form_id')->constrained('forms')->onDelete('cascade');
+            $table->string('label');
+            $table->string('type', 50); // text, number, date, select, file, textarea
+            $table->json('options')->nullable(); // For select/radio fields
             $table->boolean('required')->default(true);
+            $table->integer('order')->default(0);
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('form_fields');

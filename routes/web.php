@@ -1,24 +1,24 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Models\Employee;
 
-Route::get('/test-create-employee', function () {
-    try {
-        // 1. Hardcoded Valid Data (Using ID 1 which we know exists from Seeder)
-        $employee = Employee::create([
-            'first_name' => 'Debug',
-            'last_name' => 'User',
-            'nid_number' => 'TEST-' . rand(1000, 9999), // Unique NID
-            'designation_id' => 1, // Assumes ID 1 exists
-            'current_salary' => 50000,
-            'current_office_id' => 1, // Assumes ID 1 exists
-            'status' => 'active',
-            'is_verified' => true
-        ]);
-        
-        return "SUCCESS! Created Employee ID: " . $employee->id;
-    } catch (\Exception $e) {
-        return "ERROR: " . $e->getMessage();
-    }
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+*/
+
+// Health check
+Route::get('/', function () {
+    return response()->json([
+        'app' => 'Bangladesh Railway Employee Management System',
+        'version' => '1.0.0',
+        'status' => 'running',
+        'api_docs' => url('/api'),
+    ]);
 });
+
+// Fallback for SPA (if using React Router)
+Route::get('/{any}', function () {
+    return file_get_contents(public_path('index.html'));
+})->where('any', '^(?!api).*$');

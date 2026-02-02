@@ -2,18 +2,39 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Form extends Model
 {
-    use HasFactory;
+    protected $guarded = [];
 
-    // This line fixes the "Mass Assignment" error
-    // It tells Laravel: "I trust all data sent to this model"
-    protected $guarded = []; 
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
 
-    public function fields() {
-        return $this->hasMany(FormField::class);
+    // ==================== RELATIONSHIPS ====================
+
+    public function fields(): HasMany
+    {
+        return $this->hasMany(FormField::class)->orderBy('order');
+    }
+
+    public function submissions(): HasMany
+    {
+        return $this->hasMany(FormSubmission::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    // ==================== SCOPES ====================
+
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
     }
 }

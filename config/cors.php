@@ -21,7 +21,10 @@ return [
 
     'allowed_origins' => [
         'http://localhost:5173',
-        'https://brems-frontend.vercel.app', // <--- Add your ACTUAL Vercel URL here
+        'https://brems-frontend.vercel.app', 
+        'http://127.0.0.1:3000',
+        'http://127.0.0.1:5173',
+        env('FRONTEND_URL', 'http://localhost:3000'),
     ],
 
     'allowed_origins_patterns' => [],
@@ -32,6 +35,6 @@ return [
 
     'max_age' => 0,
 
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 
 ];

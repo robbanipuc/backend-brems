@@ -2,23 +2,50 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class FormSubmission extends Model
 {
-    use HasFactory;
-
     protected $guarded = [];
 
-    // IMPORTANT: Treat the 'data' column as an Array/JSON automatically
-    protected function casts(): array
+    protected $casts = [
+        'data' => 'array',
+    ];
+
+    // ==================== RELATIONSHIPS ====================
+
+    public function form(): BelongsTo
     {
-        return [
-            'data' => 'array',
-        ];
+        return $this->belongsTo(Form::class);
     }
 
-    public function employee() { return $this->belongsTo(Employee::class); }
-    public function form() { return $this->belongsTo(Form::class); }
+    public function employee(): BelongsTo
+    {
+        return $this->belongsTo(Employee::class);
+    }
+
+    // ==================== STATUS HELPERS ====================
+
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isApproved(): bool
+    {
+        return $this->status === 'approved';
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === 'rejected';
+    }
+
+    // ==================== SCOPES ====================
+
+    public function scopePending($query)
+    {
+        return $query->where('status', 'pending');
+    }
 }

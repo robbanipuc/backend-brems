@@ -6,18 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    public function up()
+    public function up(): void
     {
         Schema::create('designations', function (Blueprint $table) {
             $table->id();
-            $table->string('title'); 
-            $table->string('grade'); 
-            $table->decimal('basic_salary', 10, 2); 
-            
-            // Added 'super_admin' to the list here:
-            $table->enum('default_role', ['super_admin', 'office_admin', 'verified_user'])
-                  ->default('verified_user');
-            
+            $table->string('title');
+            $table->string('title_bn')->nullable();
+            $table->string('grade');
+            $table->decimal('basic_salary', 12, 2);
             $table->timestamps();
         });
     }
