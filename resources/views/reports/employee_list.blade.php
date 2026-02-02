@@ -16,8 +16,9 @@
         <div class="logo">BANGLADESH RAILWAY</div>
         <div>Official Employee Directory</div>
         <div style="font-size: 10px; color: #666; margin-top: 5px;">
-            Generated on: {{ $date }} | Filter: {{ $filter_applied }}
+            Generated on: {{ $date ?? date('d M Y') }} | Filter: {{ $filter_applied ?? 'All' }} | By: {{ $generated_by ?? '-' }}
         </div>
+        <div style="font-size: 10px; color: #666; margin-top: 3px;">Total: {{ $total_count ?? 0 }} employees</div>
     </div>
 
     <table>
@@ -32,16 +33,18 @@
             </tr>
         </thead>
         <tbody>
-            @foreach($employees as $emp)
+            @forelse($employees ?? [] as $emp)
             <tr>
                 <td>{{ $emp->id }}</td>
                 <td>{{ $emp->first_name }} {{ $emp->last_name }}</td>
-                <td>{{ $emp->designation->title ?? 'N/A' }}</td>
-                <td>{{ $emp->office->name ?? 'Unassigned' }}</td>
-                <td>{{ $emp->nid_number }}</td>
-                <td>{{ ucfirst($emp->status) }}</td>
+                <td>{{ optional($emp->designation)->title ?? 'N/A' }}</td>
+                <td>{{ optional($emp->office)->name ?? 'Unassigned' }}</td>
+                <td>{{ $emp->nid_number ?? '-' }}</td>
+                <td>{{ ucfirst($emp->status ?? '-') }}</td>
             </tr>
-            @endforeach
+            @empty
+            <tr><td colspan="6" style="text-align: center; padding: 20px;">No employees match the current filters.</td></tr>
+            @endforelse
         </tbody>
     </table>
 </body>

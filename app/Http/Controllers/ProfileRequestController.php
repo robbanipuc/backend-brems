@@ -319,7 +319,7 @@ class ProfileRequestController extends Controller
 
         foreach ($personalInfo as $field => $value) {
             if (in_array($field, $allowedFields)) {
-                $updateData[$field] = $value;
+                $updateData[$field] = in_array($field, ['dob', 'first_name', 'last_name', 'name_bn', 'nid_number', 'phone', 'religion', 'blood_group', 'marital_status', 'place_of_birth', 'height', 'passport', 'birth_reg']) ? $this->emptyToNull($value) : $value;
             }
         }
 
@@ -357,17 +357,23 @@ class ProfileRequestController extends Controller
             return;
         }
 
+        $payload = [
+            'name' => $data['name'],
+            'name_bn' => $this->emptyToNull($data['name_bn'] ?? null),
+            'nid' => $this->emptyToNull($data['nid'] ?? null),
+            'dob' => $this->emptyToNull($data['dob'] ?? null),
+            'occupation' => $this->emptyToNull($data['occupation'] ?? null),
+            'is_alive' => $data['is_alive'] ?? true,
+        ];
         $employee->family()->updateOrCreate(
             ['relation' => $relation],
-            [
-                'name' => $data['name'],
-                'name_bn' => $data['name_bn'] ?? null,
-                'nid' => $data['nid'] ?? null,
-                'dob' => $data['dob'] ?? null,
-                'occupation' => $data['occupation'] ?? null,
-                'is_alive' => $data['is_alive'] ?? true,
-            ]
+            $payload
         );
+    }
+
+    private function emptyToNull($value)
+    {
+        return ($value === '' || $value === null) ? null : $value;
     }
 
     private function updateSpouses(Employee $employee, array $spouses): void
@@ -390,10 +396,10 @@ class ProfileRequestController extends Controller
             $employee->family()->create([
                 'relation' => 'spouse',
                 'name' => $spouse['name'],
-                'name_bn' => $spouse['name_bn'] ?? null,
-                'nid' => $spouse['nid'] ?? null,
-                'dob' => $spouse['dob'] ?? null,
-                'occupation' => $spouse['occupation'] ?? null,
+                'name_bn' => $this->emptyToNull($spouse['name_bn'] ?? null),
+                'nid' => $this->emptyToNull($spouse['nid'] ?? null),
+                'dob' => $this->emptyToNull($spouse['dob'] ?? null),
+                'occupation' => $this->emptyToNull($spouse['occupation'] ?? null),
                 'is_active_marriage' => $spouse['is_active_marriage'] ?? true,
                 'is_alive' => $spouse['is_alive'] ?? true,
             ]);
@@ -410,10 +416,10 @@ class ProfileRequestController extends Controller
             $employee->family()->create([
                 'relation' => 'child',
                 'name' => $child['name'],
-                'name_bn' => $child['name_bn'] ?? null,
-                'gender' => $child['gender'] ?? null,
-                'dob' => $child['dob'] ?? null,
-                'birth_certificate_path' => $child['birth_certificate_path'] ?? null,
+                'name_bn' => $this->emptyToNull($child['name_bn'] ?? null),
+                'gender' => $this->emptyToNull($child['gender'] ?? null),
+                'dob' => $this->emptyToNull($child['dob'] ?? null),
+                'birth_certificate_path' => $this->emptyToNull($child['birth_certificate_path'] ?? null),
                 'is_alive' => $child['is_alive'] ?? true,
             ]);
         }

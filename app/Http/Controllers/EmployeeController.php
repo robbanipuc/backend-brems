@@ -860,12 +860,18 @@ class EmployeeController extends Controller
             $query->whereIn('current_office_id', $officeIds);
         }
 
-        // Apply filters
+        // Apply filters (same as index)
         if ($request->filled('office_id')) {
             $query->where('current_office_id', $request->office_id);
         }
+        if ($request->filled('designation_id')) {
+            $query->where('designation_id', $request->designation_id);
+        }
         if ($request->filled('status')) {
             $query->where('status', $request->status);
+        }
+        if ($request->has('is_verified')) {
+            $query->where('is_verified', $request->boolean('is_verified'));
         }
 
         $employees = $query->orderBy('first_name')->get();
@@ -927,11 +933,34 @@ class EmployeeController extends Controller
         if ($request->filled('office_id')) {
             $query->where('current_office_id', $request->office_id);
         }
+        if ($request->filled('designation_id')) {
+            $query->where('designation_id', $request->designation_id);
+        }
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
+        if ($request->has('is_verified')) {
+            $query->where('is_verified', $request->boolean('is_verified'));
+        }
 
         $employees = $query->orderBy('first_name')->get();
+
+        $filterParts = [];
+        if ($request->filled('office_id')) {
+            $office = \App\Models\Office::find($request->office_id);
+            $filterParts[] = 'Office: ' . ($office ? $office->name : $request->office_id);
+        }
+        if ($request->filled('designation_id')) {
+            $des = \App\Models\Designation::find($request->designation_id);
+            $filterParts[] = 'Designation: ' . ($des ? $des->title : $request->designation_id);
+        }
+        if ($request->filled('status')) {
+            $filterParts[] = 'Status: ' . ucfirst($request->status);
+        }
+        if ($request->has('is_verified')) {
+            $filterParts[] = 'Verified: ' . ($request->boolean('is_verified') ? 'Yes' : 'No');
+        }
+        $filter_applied = count($filterParts) > 0 ? implode('; ', $filterParts) : 'All';
 
         $data = [
             'title' => 'Employee Directory - Bangladesh Railway',
@@ -939,6 +968,7 @@ class EmployeeController extends Controller
             'generated_by' => $user->name,
             'employees' => $employees,
             'total_count' => $employees->count(),
+            'filter_applied' => $filter_applied,
         ];
 
         $pdf = Pdf::loadView('reports.employee_list', $data)->setPaper('a4', 'landscape');
