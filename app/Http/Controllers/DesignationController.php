@@ -48,7 +48,10 @@ class DesignationController extends Controller
             'title' => 'required|string|max:255',
             'title_bn' => 'nullable|string|max:255',
             'grade' => 'required|string|max:50',
-            'basic_salary' => 'required|numeric|min:0',
+            'salary_min' => 'required|numeric|min:0',
+            'salary_max' => 'required|numeric|min:0|gte:salary_min',
+            'method_of_recruitment' => 'nullable|string|max:2000',
+            'qualifications' => 'nullable|string|max:2000',
         ]);
 
         $designation = Designation::create($validated);
@@ -70,14 +73,17 @@ class DesignationController extends Controller
             'title' => 'sometimes|string|max:255',
             'title_bn' => 'nullable|string|max:255',
             'grade' => 'sometimes|string|max:50',
-            'basic_salary' => 'sometimes|numeric|min:0',
+            'salary_min' => 'sometimes|numeric|min:0',
+            'salary_max' => 'sometimes|numeric|min:0|gte:salary_min',
+            'method_of_recruitment' => 'nullable|string|max:2000',
+            'qualifications' => 'nullable|string|max:2000',
         ]);
 
         $designation->update($validated);
 
         return response()->json([
             'message' => 'Designation updated successfully',
-            'designation' => $designation
+            'designation' => $designation->fresh()
         ]);
     }
 
