@@ -8,41 +8,68 @@ use Illuminate\Support\Facades\Log;
 
 class CloudinaryService
 {
+    protected bool $configured = false;
+
+    public function __construct()
+    {
+        $cloudinaryUrl = env('CLOUDINARY_URL');
+        $this->configured = !empty($cloudinaryUrl) && str_starts_with($cloudinaryUrl, 'cloudinary://');
+        
+        if (!$this->configured) {
+            Log::warning('Cloudinary not configured. CLOUDINARY_URL: ' . ($cloudinaryUrl ? 'set but invalid' : 'not set'));
+        }
+    }
+
+    /**
+     * Check if Cloudinary is configured
+     */
+    public function isConfigured(): bool
+    {
+        return $this->configured;
+    }
+
     /**
      * Upload a file to Cloudinary
-     *
-     * @param UploadedFile $file
-     * @param string $folder
-     * @param array $options
-     * @return array
      */
     public function upload(UploadedFile $file, string $folder = 'uploads', array $options = []): array
     {
+        if (!$this->configured) {
+            Log::error('Cloudinary upload attempted but not configured');
+            return [
+                'success' => false,
+                'error' => 'Cloudinary is not configured',
+            ];
+        }
+
         try {
-            $defaultOptions = [
+            $uploadOptions = array_merge([
                 'folder' => 'brems/' . $folder,
-                'resource_type' => 'auto', // Handles images, PDFs, etc.
+                'resource_type' => 'auto',
                 'use_filename' => true,
                 'unique_filename' => true,
-            ];
+            ], $options);
 
-            $uploadOptions = array_merge($defaultOptions, $options);
+            Log::info('Cloudinary upload starting', [
+                'folder' => $uploadOptions['folder'],
+                'file' => $file->getClientOriginalName(),
+            ]);
 
             $result = Cloudinary::upload($file->getRealPath(), $uploadOptions);
+
+            Log::info('Cloudinary upload success', [
+                'public_id' => $result->getPublicId(),
+            ]);
 
             return [
                 'success' => true,
                 'public_id' => $result->getPublicId(),
                 'url' => $result->getSecurePath(),
-                'path' => $result->getPublicId(), // Store public_id as path in database
-                'format' => $result->getExtension(),
-                'size' => $result->getSize(),
-                'resource_type' => $result->getFileType(),
+                'path' => $result->getPublicId(),
             ];
         } catch (\Exception $e) {
-            Log::error('Cloudinary upload error: ' . $e->getMessage(), [
+            Log::error('Cloudinary upload failed', [
+                'error' => $e->getMessage(),
                 'file' => $file->getClientOriginalName(),
-                'folder' => $folder,
             ]);
 
             return [
@@ -53,192 +80,86 @@ class CloudinaryService
     }
 
     /**
-     * Upload an image with transformations
-     *
-     * @param UploadedFile $file
-     * @param string $folder
-     * @param array $transformations
-     * @return array
+     * Upload an image
      */
-    public function uploadImage(UploadedFile $file, string $folder = 'images', array $transformations = []): array
+    public function uploadImage(UploadedFile $file, string $folder = 'images'): array
     {
-        $defaultTransformations = [
-            'quality' => 'auto',
-            'fetch_format' => 'auto',
-        ];
-
-        $options = [
-            'transformation' => array_merge($defaultTransformations, $transformations),
-        ];
-
-        return $this->upload($file, $folder, $options);
+        return $this->upload($file, $folder, [
+            'resource_type' => 'image',
+            'transformation' => [
+                'quality' => 'auto',
+                'fetch_format' => 'auto',
+            ],
+        ]);
     }
 
     /**
-     * Upload a PDF document
-     *
-     * @param UploadedFile $file
-     * @param string $folder
-     * @return array
+     * Upload a document (PDF, etc.)
      */
     public function uploadDocument(UploadedFile $file, string $folder = 'documents'): array
     {
         return $this->upload($file, $folder, [
-            'resource_type' => 'raw', // For non-image files like PDFs
+            'resource_type' => 'raw',
         ]);
     }
 
     /**
      * Delete a file from Cloudinary
-     *
-     * @param string $publicId
-     * @param string $resourceType
-     * @return bool
      */
     public function delete(string $publicId, string $resourceType = 'image'): bool
     {
-        try {
-            Cloudinary::destroy($publicId, [
-                'resource_type' => $resourceType,
-            ]);
-            Log::info('Cloudinary file deleted: ' . $publicId);
-            return true;
-        } catch (\Exception $e) {
-            Log::error('Cloudinary delete error: ' . $e->getMessage(), [
-                'public_id' => $publicId,
-            ]);
+        if (!$this->configured || empty($publicId)) {
             return false;
         }
-    }
 
-    /**
-     * Delete multiple files
-     *
-     * @param array $publicIds
-     * @param string $resourceType
-     * @return bool
-     */
-    public function deleteMultiple(array $publicIds, string $resourceType = 'image'): bool
-    {
         try {
-            foreach ($publicIds as $publicId) {
-                $this->delete($publicId, $resourceType);
-            }
+            Cloudinary::destroy($publicId, ['resource_type' => $resourceType]);
+            Log::info('Cloudinary delete success', ['public_id' => $publicId]);
             return true;
         } catch (\Exception $e) {
-            Log::error('Cloudinary bulk delete error: ' . $e->getMessage());
+            Log::error('Cloudinary delete failed', [
+                'error' => $e->getMessage(),
+                'public_id' => $publicId,
+            ]);
             return false;
         }
     }
 
     /**
      * Get URL for a public_id
-     *
-     * @param string|null $publicId
-     * @param string $resourceType
-     * @param array $transformations
-     * @return string|null
      */
-    public function getUrl(?string $publicId, string $resourceType = 'image', array $transformations = []): ?string
+    public function getUrl(?string $publicId, string $resourceType = 'image'): ?string
     {
         if (!$publicId) {
             return null;
         }
 
-        // If it's already a full URL, return as-is
-        if (str_starts_with($publicId, 'http://') || str_starts_with($publicId, 'https://')) {
+        // If already a full URL, return as-is
+        if (str_starts_with($publicId, 'http')) {
             return $publicId;
         }
 
-        try {
-            if ($resourceType === 'raw') {
-                // For PDFs and other documents
-                return Cloudinary::getUrl($publicId, [
-                    'resource_type' => 'raw',
-                    'secure' => true,
-                ]);
-            }
-
-            // For images with optional transformations
-            $options = array_merge([
-                'secure' => true,
-                'resource_type' => $resourceType,
-            ], $transformations);
-
-            return Cloudinary::getUrl($publicId, $options);
-        } catch (\Exception $e) {
-            Log::error('Cloudinary getUrl error: ' . $e->getMessage(), [
-                'public_id' => $publicId,
-            ]);
-            return null;
-        }
-    }
-
-    /**
-     * Get thumbnail URL for an image
-     *
-     * @param string|null $publicId
-     * @param int $width
-     * @param int $height
-     * @return string|null
-     */
-    public function getThumbnailUrl(?string $publicId, int $width = 150, int $height = 150): ?string
-    {
-        if (!$publicId) {
+        if (!$this->configured) {
             return null;
         }
 
         try {
             return Cloudinary::getUrl($publicId, [
                 'secure' => true,
-                'transformation' => [
-                    'width' => $width,
-                    'height' => $height,
-                    'crop' => 'fill',
-                    'quality' => 'auto',
-                ],
+                'resource_type' => $resourceType,
             ]);
         } catch (\Exception $e) {
-            return $this->getUrl($publicId);
+            Log::error('Cloudinary getUrl failed', ['error' => $e->getMessage()]);
+            return null;
         }
     }
 
     /**
-     * Check if a path is a Cloudinary public_id (vs local path)
-     *
-     * @param string|null $path
-     * @return bool
-     */
-    public function isCloudinaryPath(?string $path): bool
-    {
-        if (!$path) {
-            return false;
-        }
-
-        // Cloudinary public_ids typically contain 'brems/' prefix we set
-        return str_contains($path, 'brems/') || str_starts_with($path, 'http');
-    }
-
-    /**
-     * Determine resource type from file extension
-     *
-     * @param string $path
-     * @return string
+     * Determine resource type from file path
      */
     public function getResourceType(string $path): string
     {
-        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
-
-        // Cloudinary public_id has no extension; default to image (profile pics, most certs)
-        if ($extension === '') {
-            return str_contains($path, 'brems/') ? 'image' : 'raw';
-        }
-
-        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'];
-        if (in_array($extension, $imageExtensions)) {
-            return 'image';
-        }
-
-        return 'raw'; // PDFs, documents, etc.
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        return in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp']) ? 'image' : 'raw';
     }
 }

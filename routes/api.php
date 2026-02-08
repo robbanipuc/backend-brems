@@ -289,17 +289,33 @@ Route::middleware('auth:sanctum')->group(function () {
         ]);
     });
 
-    Route::get('/debug/cloudinary', function () {
-        $cloudinaryUrl = env('CLOUDINARY_URL');
-        
-        return response()->json([
-            'cloudinary_url_exists' => !empty($cloudinaryUrl),
-            'cloudinary_url_format' => $cloudinaryUrl ? (str_starts_with($cloudinaryUrl, 'cloudinary://') ? 'valid' : 'invalid_format: ' . substr($cloudinaryUrl, 0, 20)) : 'empty',
-            'config_cloud_url' => !empty(config('cloudinary.cloud_url')),
-            'php_version' => PHP_VERSION,
-            'storage_writable' => is_writable(storage_path()),
-            'logs_writable' => is_writable(storage_path('logs')),
-        ]);
+    // Temporary debug routes - place OUTSIDE auth middleware
+Route::get('/debug/cloudinary', function () {
+    $cloudinaryUrl = env('CLOUDINARY_URL');
+    
+    return response()->json([
+        'cloudinary_url_exists' => !empty($cloudinaryUrl),
+        'cloudinary_url_valid' => !empty($cloudinaryUrl) && str_starts_with($cloudinaryUrl, 'cloudinary://'),
+        'db_database' => env('DB_DATABASE'),
+        'db_host' => env('DB_HOST'),
+        'session_driver' => env('SESSION_DRIVER', config('session.driver')),
+        'app_env' => env('APP_ENV'),
+    ]);
+});
+
+    Route::get('/debug/test-service', function () {
+        try {
+            $service = new \App\Services\CloudinaryService();
+            return response()->json([
+                'service_created' => true,
+                'is_configured' => $service->isConfigured(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ], 500);
+        }
     });
 
     Route::get('/debug/test-upload', function () {
