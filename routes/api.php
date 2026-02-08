@@ -256,5 +256,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/promotions/pdf', [ReportController::class, 'exportPromotionsPdf']);
         Route::get('/offices/pdf', [ReportController::class, 'exportOfficesPdf']);
         Route::get('/profile-requests/pdf', [ReportController::class, 'exportProfileRequestsPdf']);
+        // Pending files management (inside auth:sanctum group)
+        Route::get('/employees/{employee}/pending-files', [FileController::class, 'getPendingFiles']);
+        Route::delete('/employees/{employee}/pending-files', [FileController::class, 'deletePendingFile']);
     });
 });

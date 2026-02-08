@@ -5,11 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Employee;
 use App\Models\AcademicRecord;
 use App\Models\FamilyMember;
-use App\Models\ProfileRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use App\Http\Resources\EmployeeResource;
+
 class FileController extends Controller
 {
     // =========================================================
@@ -18,7 +17,8 @@ class FileController extends Controller
 
     /**
      * Upload profile picture.
-     * Admin: applied immediately. Employee (own profile): stored in pending until admin approves.
+     * Admin: applied immediately.
+     * Employee (own profile): stored in pending, path returned for inclusion in profile update request.
      */
     public function uploadProfilePicture(Request $request, $employeeId)
     {
@@ -34,10 +34,12 @@ class FileController extends Controller
         ]);
 
         $ext = $request->file('photo')->extension();
-        $filename = $employee->nid_number . '_' . time() . '.' . $ext;
+        $filename = ($employee->nid_number ?: 'emp' . $employee->id) . '_' . time() . '.' . $ext;
 
-        // Apply immediately only when an admin is uploading for this employee (not when employee uploads their own)
-        $isAdminUploadingForEmployee = $user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id;
+        // Admin uploading for employee: apply immediately
+        $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
+            && (int) $user->employee_id !== (int) $employee->id;
+
         if ($isAdminUploadingForEmployee) {
             if ($employee->profile_picture) {
                 Storage::disk('public')->delete($employee->profile_picture);
@@ -48,34 +50,41 @@ class FileController extends Controller
                 'message' => 'Photo uploaded successfully',
                 'path' => $path,
                 'url' => Storage::disk('public')->url($path),
+                'applied' => true,
             ]);
         }
 
-        // Employee uploading own profile: save to pending and create request (no change until admin approves)
+        // Employee uploading own profile: save to pending, return path
+        // DO NOT create ProfileRequest here - let the profile edit form handle it
         $path = $request->file('photo')->storeAs(
             'documents/pending/employee_' . $employee->id,
             'profile_picture_' . time() . '.' . $ext,
             'public'
         );
-        $this->createDocumentUpdateRequestIfOwnProfile($user, $employee, 'Profile picture', $path, ['employee_field' => 'profile_picture']);
+
+        Log::info("Profile picture uploaded to pending: {$path} for employee #{$employee->id}");
 
         return response()->json([
-            'message' => 'Photo submitted for admin approval. It will appear on your profile once approved.',
+            'message' => 'Photo uploaded to pending. Submit your profile changes for review.',
             'path' => $path,
+            'url' => Storage::disk('public')->url($path),
             'pending' => true,
+            'field' => 'profile_picture',
+            'document_type' => 'Profile Picture',
         ]);
     }
 
     /**
-     * Delete profile picture
+     * Delete profile picture - Admin only for direct delete
      */
     public function deleteProfilePicture(Request $request, $employeeId)
     {
         $user = $request->user();
         $employee = Employee::findOrFail($employeeId);
 
-        if (!$user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id) {
-            return response()->json(['message' => 'Access denied'], 403);
+        // Only admins can delete directly
+        if (!$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
+            return response()->json(['message' => 'Only admins can delete profile pictures directly'], 403);
         }
 
         if ($employee->profile_picture) {
@@ -92,7 +101,8 @@ class FileController extends Controller
 
     /**
      * Upload NID document.
-     * Admin: applied immediately. Employee (own profile): pending until admin approves.
+     * Admin: applied immediately.
+     * Employee (own profile): stored in pending, path returned.
      */
     public function uploadNidDocument(Request $request, $employeeId)
     {
@@ -108,9 +118,11 @@ class FileController extends Controller
         ]);
 
         $ext = $request->file('document')->extension();
-        $filename = 'NID_' . $employee->nid_number . '_' . time() . '.' . $ext;
+        $filename = 'NID_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . time() . '.' . $ext;
 
-        $isAdminUploadingForEmployee = $user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id;
+        $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
+            && (int) $user->employee_id !== (int) $employee->id;
+
         if ($isAdminUploadingForEmployee) {
             if ($employee->nid_file_path) {
                 Storage::disk('public')->delete($employee->nid_file_path);
@@ -121,26 +133,31 @@ class FileController extends Controller
                 'message' => 'NID document uploaded successfully',
                 'path' => $path,
                 'url' => Storage::disk('public')->url($path),
+                'applied' => true,
             ]);
         }
 
+        // Employee: save to pending
         $path = $request->file('document')->storeAs(
             'documents/pending/employee_' . $employee->id,
             'nid_' . time() . '.' . $ext,
             'public'
         );
-        $this->createDocumentUpdateRequestIfOwnProfile($user, $employee, 'NID document', $path, ['employee_field' => 'nid_file_path']);
+
+        Log::info("NID document uploaded to pending: {$path} for employee #{$employee->id}");
 
         return response()->json([
-            'message' => 'Document submitted for admin approval.',
+            'message' => 'Document uploaded to pending. Submit your profile changes for review.',
             'path' => $path,
+            'url' => Storage::disk('public')->url($path),
             'pending' => true,
+            'field' => 'nid_file_path',
+            'document_type' => 'NID Document',
         ]);
     }
 
     /**
      * Upload birth certificate document.
-     * Admin: applied immediately. Employee (own profile): pending until admin approves.
      */
     public function uploadBirthCertificate(Request $request, $employeeId)
     {
@@ -156,9 +173,11 @@ class FileController extends Controller
         ]);
 
         $ext = $request->file('document')->extension();
-        $filename = 'BIRTH_' . $employee->nid_number . '_' . time() . '.' . $ext;
+        $filename = 'BIRTH_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . time() . '.' . $ext;
 
-        $isAdminUploadingForEmployee = $user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id;
+        $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
+            && (int) $user->employee_id !== (int) $employee->id;
+
         if ($isAdminUploadingForEmployee) {
             if ($employee->birth_file_path) {
                 Storage::disk('public')->delete($employee->birth_file_path);
@@ -169,33 +188,39 @@ class FileController extends Controller
                 'message' => 'Birth certificate uploaded successfully',
                 'path' => $path,
                 'url' => Storage::disk('public')->url($path),
+                'applied' => true,
             ]);
         }
 
+        // Employee: save to pending
         $path = $request->file('document')->storeAs(
             'documents/pending/employee_' . $employee->id,
             'birth_' . time() . '.' . $ext,
             'public'
         );
-        $this->createDocumentUpdateRequestIfOwnProfile($user, $employee, 'Birth certificate', $path, ['employee_field' => 'birth_file_path']);
+
+        Log::info("Birth certificate uploaded to pending: {$path} for employee #{$employee->id}");
 
         return response()->json([
-            'message' => 'Document submitted for admin approval.',
+            'message' => 'Document uploaded to pending. Submit your profile changes for review.',
             'path' => $path,
+            'url' => Storage::disk('public')->url($path),
             'pending' => true,
+            'field' => 'birth_file_path',
+            'document_type' => 'Birth Certificate',
         ]);
     }
 
     /**
-     * Delete document (NID or Birth Certificate)
+     * Delete document (NID or Birth Certificate) - Admin only
      */
     public function deleteDocument(Request $request, $employeeId, $type)
     {
         $user = $request->user();
         $employee = Employee::findOrFail($employeeId);
 
-        if (!$user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id) {
-            return response()->json(['message' => 'Access denied'], 403);
+        if (!$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
+            return response()->json(['message' => 'Only admins can delete documents directly'], 403);
         }
 
         $column = $type === 'nid' ? 'nid_file_path' : 'birth_file_path';
@@ -231,11 +256,13 @@ class FileController extends Controller
             'certificate' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        $examSlug = str_replace(['/', ' '], '_', $academic->exam_name);
+        $examSlug = str_replace(['/', ' '], '_', $academic->exam_name ?? 'cert');
         $ext = $request->file('certificate')->extension();
-        $filename = 'CERT_' . $employee->nid_number . '_' . $examSlug . '_' . time() . '.' . $ext;
+        $filename = 'CERT_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . $examSlug . '_' . time() . '.' . $ext;
 
-        $isAdminUploadingForEmployee = $user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id;
+        $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
+            && (int) $user->employee_id !== (int) $employee->id;
+
         if ($isAdminUploadingForEmployee) {
             if ($academic->certificate_path) {
                 Storage::disk('public')->delete($academic->certificate_path);
@@ -246,33 +273,39 @@ class FileController extends Controller
                 'message' => 'Certificate uploaded successfully',
                 'path' => $path,
                 'url' => Storage::disk('public')->url($path),
+                'applied' => true,
             ]);
         }
 
+        // Employee: save to pending
         $path = $request->file('certificate')->storeAs(
             'documents/pending/employee_' . $employee->id,
             'academic_' . $academic->id . '_' . time() . '.' . $ext,
             'public'
         );
-        $this->createDocumentUpdateRequestIfOwnProfile($user, $employee, 'Academic certificate: ' . ($academic->exam_name ?? 'certificate'), $path, ['academic_id' => $academic->id]);
+
+        Log::info("Academic certificate uploaded to pending: {$path} for employee #{$employee->id}, academic #{$academic->id}");
 
         return response()->json([
-            'message' => 'Certificate submitted for admin approval.',
+            'message' => 'Certificate uploaded to pending. Submit your profile changes for review.',
             'path' => $path,
+            'url' => Storage::disk('public')->url($path),
             'pending' => true,
+            'academic_id' => $academic->id,
+            'document_type' => 'Academic Certificate: ' . ($academic->exam_name ?? 'Certificate'),
         ]);
     }
 
     /**
-     * Delete academic certificate
+     * Delete academic certificate - Admin only
      */
     public function deleteAcademicCertificate(Request $request, $employeeId, $academicId)
     {
         $user = $request->user();
         $employee = Employee::findOrFail($employeeId);
 
-        if (!$user->canManageEmployee($employee)) {
-            return response()->json(['message' => 'Access denied'], 403);
+        if (!$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
+            return response()->json(['message' => 'Only admins can delete certificates directly'], 403);
         }
 
         $academic = AcademicRecord::where('employee_id', $employeeId)
@@ -310,11 +343,13 @@ class FileController extends Controller
             'certificate' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        $childNameSlug = str_replace(' ', '_', $child->name);
+        $childNameSlug = str_replace(' ', '_', $child->name ?? 'child');
         $ext = $request->file('certificate')->extension();
-        $filename = 'CHILD_BIRTH_' . $employee->nid_number . '_' . $childNameSlug . '_' . time() . '.' . $ext;
+        $filename = 'CHILD_BIRTH_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . $childNameSlug . '_' . time() . '.' . $ext;
 
-        $isAdminUploadingForEmployee = $user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id;
+        $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
+            && (int) $user->employee_id !== (int) $employee->id;
+
         if ($isAdminUploadingForEmployee) {
             if ($child->birth_certificate_path) {
                 Storage::disk('public')->delete($child->birth_certificate_path);
@@ -325,33 +360,39 @@ class FileController extends Controller
                 'message' => 'Child birth certificate uploaded successfully',
                 'path' => $path,
                 'url' => Storage::disk('public')->url($path),
+                'applied' => true,
             ]);
         }
 
+        // Employee: save to pending
         $path = $request->file('certificate')->storeAs(
             'documents/pending/employee_' . $employee->id,
             'child_birth_' . $child->id . '_' . time() . '.' . $ext,
             'public'
         );
-        $this->createDocumentUpdateRequestIfOwnProfile($user, $employee, 'Child birth certificate: ' . ($child->name ?? 'child'), $path, ['family_member_id' => $child->id]);
+
+        Log::info("Child birth certificate uploaded to pending: {$path} for employee #{$employee->id}, child #{$child->id}");
 
         return response()->json([
-            'message' => 'Certificate submitted for admin approval.',
+            'message' => 'Certificate uploaded to pending. Submit your profile changes for review.',
             'path' => $path,
+            'url' => Storage::disk('public')->url($path),
             'pending' => true,
+            'family_member_id' => $child->id,
+            'document_type' => 'Child Birth Certificate: ' . ($child->name ?? 'Child'),
         ]);
     }
 
     /**
-     * Delete child's birth certificate
+     * Delete child's birth certificate - Admin only
      */
     public function deleteChildBirthCertificate(Request $request, $employeeId, $familyMemberId)
     {
         $user = $request->user();
         $employee = Employee::findOrFail($employeeId);
 
-        if (!$user->canManageEmployee($employee) && (int) $user->employee_id !== (int) $employee->id) {
-            return response()->json(['message' => 'Access denied'], 403);
+        if (!$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
+            return response()->json(['message' => 'Only admins can delete certificates directly'], 403);
         }
 
         $child = FamilyMember::where('employee_id', $employeeId)
@@ -364,6 +405,75 @@ class FileController extends Controller
         }
 
         return response()->json(['message' => 'Certificate deleted successfully']);
+    }
+
+    // =========================================================
+    // CLEANUP PENDING FILES
+    // =========================================================
+
+    /**
+     * Delete a specific pending file (e.g., when user removes before submitting)
+     */
+    public function deletePendingFile(Request $request, $employeeId)
+    {
+        $user = $request->user();
+        $employee = Employee::findOrFail($employeeId);
+
+        // Only the employee themselves or admin can delete their pending files
+        if ((int) $user->employee_id !== (int) $employee->id && !$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $request->validate([
+            'path' => 'required|string',
+        ]);
+
+        $path = $request->path;
+
+        // Security: ensure the path is within the employee's pending folder
+        $expectedPrefix = 'documents/pending/employee_' . $employee->id . '/';
+        if (!str_starts_with($path, $expectedPrefix)) {
+            return response()->json(['message' => 'Invalid file path'], 403);
+        }
+
+        if (Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+            Log::info("Deleted pending file: {$path}");
+            return response()->json(['message' => 'Pending file deleted successfully']);
+        }
+
+        return response()->json(['message' => 'File not found'], 404);
+    }
+
+    /**
+     * Get list of pending files for an employee
+     */
+    public function getPendingFiles(Request $request, $employeeId)
+    {
+        $user = $request->user();
+        $employee = Employee::findOrFail($employeeId);
+
+        if ((int) $user->employee_id !== (int) $employee->id && !$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $pendingDir = 'documents/pending/employee_' . $employee->id;
+        $files = [];
+
+        if (Storage::disk('public')->exists($pendingDir)) {
+            $allFiles = Storage::disk('public')->files($pendingDir);
+            foreach ($allFiles as $filePath) {
+                $files[] = [
+                    'path' => $filePath,
+                    'url' => Storage::disk('public')->url($filePath),
+                    'name' => basename($filePath),
+                    'size' => Storage::disk('public')->size($filePath),
+                    'last_modified' => Storage::disk('public')->lastModified($filePath),
+                ];
+            }
+        }
+
+        return response()->json(['files' => $files]);
     }
 
     // =========================================================
@@ -407,39 +517,5 @@ class FileController extends Controller
         }
 
         return Storage::disk('public')->download($path);
-    }
-
-    /**
-     * Create a "Document Update" profile request when a verified user uploads their own document.
-     * Stores file_path and revert info so admin can revert (delete file, clear field) on reject.
-     *
-     * @param  array  $revertInfo  One of: ['employee_field' => 'nid_file_path'], ['academic_id' => 1], ['family_member_id' => 1]
-     */
-    private function createDocumentUpdateRequestIfOwnProfile($user, Employee $employee, string $documentType, string $filePath, array $revertInfo = []): void
-    {
-        if ((int) $user->employee_id !== (int) $employee->id) {
-            return;
-        }
-        if ($user->canManageEmployee($employee)) {
-            return; // admin upload, no request needed
-        }
-
-        try {
-            ProfileRequest::create([
-                'employee_id' => $employee->id,
-                'request_type' => 'Document Update',
-                'details' => 'Uploaded: ' . $documentType,
-                'proposed_changes' => [
-                    'document_update' => array_merge([
-                        'type' => $documentType,
-                        'uploaded_at' => now()->toIso8601String(),
-                        'file_path' => $filePath,
-                    ], $revertInfo),
-                ],
-                'status' => 'pending',
-            ]);
-        } catch (\Exception $e) {
-            Log::warning('Failed to create Document Update profile request: ' . $e->getMessage());
-        }
     }
 }
