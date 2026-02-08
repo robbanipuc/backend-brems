@@ -289,19 +289,25 @@ Route::middleware('auth:sanctum')->group(function () {
         ]);
     });
 
-    // Temporary debug routes - place OUTSIDE auth middleware
-Route::get('/debug/cloudinary', function () {
-    $cloudinaryUrl = env('CLOUDINARY_URL');
-    
-    return response()->json([
-        'cloudinary_url_exists' => !empty($cloudinaryUrl),
-        'cloudinary_url_valid' => !empty($cloudinaryUrl) && str_starts_with($cloudinaryUrl, 'cloudinary://'),
-        'db_database' => env('DB_DATABASE'),
-        'db_host' => env('DB_HOST'),
-        'session_driver' => env('SESSION_DRIVER', config('session.driver')),
-        'app_env' => env('APP_ENV'),
-    ]);
-});
+    // Temporary debug route - REMOVE in production (requires auth)
+    Route::get('/debug/cloudinary', function () {
+        try {
+            $cloudinaryUrl = env('CLOUDINARY_URL');
+            $url = $cloudinaryUrl !== null && $cloudinaryUrl !== '' ? (string) $cloudinaryUrl : '';
+
+            return response()->json([
+                'cloudinary_url_exists' => $url !== '',
+                'cloudinary_url_valid' => $url !== '' && str_starts_with($url, 'cloudinary://'),
+                'app_env' => config('app.env'),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], 500);
+        }
+    });
 
     Route::get('/debug/test-service', function () {
         try {
