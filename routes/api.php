@@ -259,24 +259,62 @@ Route::middleware('auth:sanctum')->group(function () {
         // Pending files management (inside auth:sanctum group)
         Route::get('/employees/{employee}/pending-files', [FileController::class, 'getPendingFiles']);
         Route::delete('/employees/{employee}/pending-files', [FileController::class, 'deletePendingFile']);
+    });
 
+    // Temporary debug endpoint - REMOVE AFTER DEBUGGING
+    Route::get('/debug/logs', function () {
+        $logFile = storage_path('logs/laravel.log');
+        
+        if (!file_exists($logFile)) {
+            return response()->json(['error' => 'Log file not found', 'path' => $logFile]);
+        }
+        
+        // Get last 200 lines
+        $lines = [];
+        $file = new \SplFileObject($logFile, 'r');
+        $file->seek(PHP_INT_MAX);
+        $totalLines = $file->key();
+        
+        $startLine = max(0, $totalLines - 200);
+        $file->seek($startLine);
+        
+        while (!$file->eof()) {
+            $lines[] = $file->fgets();
+        }
+        
+        return response()->json([
+            'total_lines' => $totalLines,
+            'showing_from' => $startLine,
+            'logs' => implode('', $lines),
+        ]);
+    });
 
-        Route::get('/debug/storage', function () {
-                $publicPath = storage_path('app/public');
-                $linkPath = public_path('storage');
-                
-                return response()->json([
-                    'storage_path' => $publicPath,
-                    'storage_exists' => file_exists($publicPath),
-                    'storage_writable' => is_writable($publicPath),
-                    'link_path' => $linkPath,
-                    'link_exists' => file_exists($linkPath),
-                    'link_is_link' => is_link($linkPath),
-                    'disk_config' => config('filesystems.disks.public'),
-                    'default_disk' => config('filesystems.default'),
-                    'app_url' => config('app.url'),
-                    'files_in_storage' => file_exists($publicPath) ? array_slice(scandir($publicPath), 0, 20) : [],
-                ]);
-        });
+    Route::get('/debug/cloudinary', function () {
+        $cloudinaryUrl = env('CLOUDINARY_URL');
+        
+        return response()->json([
+            'cloudinary_url_exists' => !empty($cloudinaryUrl),
+            'cloudinary_url_format' => $cloudinaryUrl ? (str_starts_with($cloudinaryUrl, 'cloudinary://') ? 'valid' : 'invalid_format: ' . substr($cloudinaryUrl, 0, 20)) : 'empty',
+            'config_cloud_url' => !empty(config('cloudinary.cloud_url')),
+            'php_version' => PHP_VERSION,
+            'storage_writable' => is_writable(storage_path()),
+            'logs_writable' => is_writable(storage_path('logs')),
+        ]);
+    });
+
+    Route::get('/debug/test-upload', function () {
+        try {
+            $cloudinary = app(\App\Services\CloudinaryService::class);
+            return response()->json([
+                'service_created' => true,
+                'is_configured' => $cloudinary->isConfigured(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ], 500);
+        }
     });
 });
