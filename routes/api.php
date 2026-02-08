@@ -259,5 +259,24 @@ Route::middleware('auth:sanctum')->group(function () {
         // Pending files management (inside auth:sanctum group)
         Route::get('/employees/{employee}/pending-files', [FileController::class, 'getPendingFiles']);
         Route::delete('/employees/{employee}/pending-files', [FileController::class, 'deletePendingFile']);
+
+
+        Route::get('/debug/storage', function () {
+                $publicPath = storage_path('app/public');
+                $linkPath = public_path('storage');
+                
+                return response()->json([
+                    'storage_path' => $publicPath,
+                    'storage_exists' => file_exists($publicPath),
+                    'storage_writable' => is_writable($publicPath),
+                    'link_path' => $linkPath,
+                    'link_exists' => file_exists($linkPath),
+                    'link_is_link' => is_link($linkPath),
+                    'disk_config' => config('filesystems.disks.public'),
+                    'default_disk' => config('filesystems.default'),
+                    'app_url' => config('app.url'),
+                    'files_in_storage' => file_exists($publicPath) ? array_slice(scandir($publicPath), 0, 20) : [],
+                ]);
+        });
     });
 });
