@@ -66,24 +66,30 @@ class CloudinaryService
 
             $result = Cloudinary::uploadApi()->upload($path, $uploadOptions);
 
-            // ApiResponse extends ArrayObject; upload returns public_id, secure_url, etc.
-            $publicId = $result['public_id'] ?? null;
-            $secureUrl = $result['secure_url'] ?? null;
+            // ApiResponse extends ArrayObject; avoid "array offset on null" if response body was empty
+            $data = $result instanceof \ArrayObject ? $result->getArrayCopy() : (is_array($result) ? $result : []);
+            if (!is_array($data)) {
+                $data = [];
+            }
+            $publicId = $data['public_id'] ?? null;
+            $secureUrl = $data['secure_url'] ?? null;
 
-            if (!$publicId) {
-                Log::error('Cloudinary upload: no public_id in response');
+            if (!$publicId || !is_string($publicId)) {
+                Log::error('Cloudinary upload: no public_id in response', ['response_keys' => array_keys($data)]);
                 return [
                     'success' => false,
-                    'error' => 'Invalid response from Cloudinary',
+                    'error' => 'Invalid response from Cloudinary (missing public_id)',
                 ];
             }
 
             Log::info('Cloudinary upload success', ['public_id' => $publicId]);
 
+            $resourceType = $data['resource_type'] ?? $options['resource_type'] ?? 'image';
+
             return [
                 'success' => true,
                 'public_id' => $publicId,
-                'url' => $secureUrl ?: $this->getUrl($publicId, $options['resource_type'] ?? 'image'),
+                'url' => is_string($secureUrl) && $secureUrl !== '' ? $secureUrl : $this->getUrl($publicId, $resourceType),
                 'path' => $publicId,
             ];
         } catch (\Throwable $e) {

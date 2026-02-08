@@ -51,8 +51,11 @@ class FileController extends Controller
                 'photos/employee_' . $employee->id
             );
 
-            if (!$result['success']) {
-                return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+            if (empty($result['success'])) {
+                $message = isset($result['error']) && is_string($result['error'])
+                    ? $result['error']
+                    : 'Upload failed';
+                return response()->json(['message' => 'Upload failed: ' . $message], 500);
             }
 
             $employee->update(['profile_picture' => $result['public_id']]);
@@ -71,8 +74,11 @@ class FileController extends Controller
             'pending/employee_' . $employee->id . '/photos'
         );
 
-        if (!$result['success']) {
-            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        if (empty($result['success'])) {
+            $message = isset($result['error']) && is_string($result['error'])
+                ? $result['error']
+                : 'Upload failed';
+            return response()->json(['message' => 'Upload failed: ' . $message], 500);
         }
 
         $this->createDocumentUpdateRequestIfOwnProfile(
