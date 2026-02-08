@@ -5,21 +5,24 @@ namespace App\Http\Controllers;
 use App\Models\Employee;
 use App\Models\AcademicRecord;
 use App\Models\FamilyMember;
+use App\Models\ProfileRequest;
+use App\Services\CloudinaryService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 
 class FileController extends Controller
 {
+    protected CloudinaryService $cloudinary;
+
+    public function __construct(CloudinaryService $cloudinary)
+    {
+        $this->cloudinary = $cloudinary;
+    }
+
     // =========================================================
     // PROFILE PICTURE
     // =========================================================
 
-    /**
-     * Upload profile picture.
-     * Admin: applied immediately.
-     * Employee (own profile): stored in pending, path returned for inclusion in profile update request.
-     */
     public function uploadProfilePicture(Request $request, $employeeId)
     {
         $user = $request->user();
@@ -33,62 +36,74 @@ class FileController extends Controller
             'photo' => 'required|image|mimes:jpg,jpeg,png|max:2048',
         ]);
 
-        $ext = $request->file('photo')->extension();
-        $filename = ($employee->nid_number ?: 'emp' . $employee->id) . '_' . time() . '.' . $ext;
-
-        // Admin uploading for employee: apply immediately
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
 
         if ($isAdminUploadingForEmployee) {
+            // Delete old photo from Cloudinary
             if ($employee->profile_picture) {
-                Storage::disk('public')->delete($employee->profile_picture);
+                $this->cloudinary->delete($employee->profile_picture, 'image');
             }
-            $path = $request->file('photo')->storeAs('photos', $filename, 'public');
-            $employee->update(['profile_picture' => $path]);
+
+            // Upload new photo
+            $result = $this->cloudinary->uploadImage(
+                $request->file('photo'),
+                'photos/employee_' . $employee->id
+            );
+
+            if (!$result['success']) {
+                return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+            }
+
+            $employee->update(['profile_picture' => $result['public_id']]);
+
             return response()->json([
                 'message' => 'Photo uploaded successfully',
-                'path' => $path,
-                'url' => Storage::disk('public')->url($path),
+                'path' => $result['public_id'],
+                'url' => $result['url'],
                 'applied' => true,
             ]);
         }
 
-        // Employee uploading own profile: save to pending, return path
-        // DO NOT create ProfileRequest here - let the profile edit form handle it
-        $path = $request->file('photo')->storeAs(
-            'documents/pending/employee_' . $employee->id,
-            'profile_picture_' . time() . '.' . $ext,
-            'public'
+        // Employee uploading own profile: save to pending folder
+        $result = $this->cloudinary->uploadImage(
+            $request->file('photo'),
+            'pending/employee_' . $employee->id . '/photos'
         );
 
-        Log::info("Profile picture uploaded to pending: {$path} for employee #{$employee->id}");
+        if (!$result['success']) {
+            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        }
+
+        $this->createDocumentUpdateRequestIfOwnProfile(
+            $employee,
+            'Profile picture',
+            $result['public_id'],
+            ['employee_field' => 'profile_picture'],
+            'image'
+        );
 
         return response()->json([
-            'message' => 'Photo uploaded to pending. Submit your profile changes for review.',
-            'path' => $path,
-            'url' => Storage::disk('public')->url($path),
+            'message' => 'Photo submitted for admin approval. It will appear once approved.',
+            'path' => $result['public_id'],
+            'url' => $result['url'],
             'pending' => true,
             'field' => 'profile_picture',
             'document_type' => 'Profile Picture',
         ]);
     }
 
-    /**
-     * Delete profile picture - Admin only for direct delete
-     */
     public function deleteProfilePicture(Request $request, $employeeId)
     {
         $user = $request->user();
         $employee = Employee::findOrFail($employeeId);
 
-        // Only admins can delete directly
         if (!$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
             return response()->json(['message' => 'Only admins can delete profile pictures directly'], 403);
         }
 
         if ($employee->profile_picture) {
-            Storage::disk('public')->delete($employee->profile_picture);
+            $this->cloudinary->delete($employee->profile_picture, 'image');
             $employee->update(['profile_picture' => null]);
         }
 
@@ -99,11 +114,6 @@ class FileController extends Controller
     // DOCUMENT UPLOADS (NID, Birth Certificate)
     // =========================================================
 
-    /**
-     * Upload NID document.
-     * Admin: applied immediately.
-     * Employee (own profile): stored in pending, path returned.
-     */
     public function uploadNidDocument(Request $request, $employeeId)
     {
         $user = $request->user();
@@ -117,48 +127,64 @@ class FileController extends Controller
             'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        $ext = $request->file('document')->extension();
-        $filename = 'NID_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . time() . '.' . $ext;
+        $file = $request->file('document');
+        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
 
         if ($isAdminUploadingForEmployee) {
             if ($employee->nid_file_path) {
-                Storage::disk('public')->delete($employee->nid_file_path);
+                $resourceType = $this->cloudinary->getResourceType($employee->nid_file_path);
+                $this->cloudinary->delete($employee->nid_file_path, $resourceType);
             }
-            $path = $request->file('document')->storeAs('documents/nid', $filename, 'public');
-            $employee->update(['nid_file_path' => $path]);
+
+            $result = $isPdf
+                ? $this->cloudinary->uploadDocument($file, 'documents/nid/employee_' . $employee->id)
+                : $this->cloudinary->uploadImage($file, 'documents/nid/employee_' . $employee->id);
+
+            if (!$result['success']) {
+                return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+            }
+
+            $employee->update(['nid_file_path' => $result['public_id']]);
+
             return response()->json([
                 'message' => 'NID document uploaded successfully',
-                'path' => $path,
-                'url' => Storage::disk('public')->url($path),
+                'path' => $result['public_id'],
+                'url' => $result['url'],
                 'applied' => true,
             ]);
         }
 
         // Employee: save to pending
-        $path = $request->file('document')->storeAs(
-            'documents/pending/employee_' . $employee->id,
-            'nid_' . time() . '.' . $ext,
-            'public'
+        $result = $isPdf
+            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/nid')
+            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/nid');
+
+        if (!$result['success']) {
+            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        }
+
+        $resourceType = $isPdf ? 'raw' : 'image';
+        $this->createDocumentUpdateRequestIfOwnProfile(
+            $employee,
+            'NID document',
+            $result['public_id'],
+            ['employee_field' => 'nid_file_path'],
+            $resourceType
         );
 
-        Log::info("NID document uploaded to pending: {$path} for employee #{$employee->id}");
-
         return response()->json([
-            'message' => 'Document uploaded to pending. Submit your profile changes for review.',
-            'path' => $path,
-            'url' => Storage::disk('public')->url($path),
+            'message' => 'Document submitted for admin approval.',
+            'path' => $result['public_id'],
+            'url' => $result['url'],
             'pending' => true,
             'field' => 'nid_file_path',
             'document_type' => 'NID Document',
         ]);
     }
 
-    /**
-     * Upload birth certificate document.
-     */
     public function uploadBirthCertificate(Request $request, $employeeId)
     {
         $user = $request->user();
@@ -172,48 +198,64 @@ class FileController extends Controller
             'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        $ext = $request->file('document')->extension();
-        $filename = 'BIRTH_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . time() . '.' . $ext;
+        $file = $request->file('document');
+        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
 
         if ($isAdminUploadingForEmployee) {
             if ($employee->birth_file_path) {
-                Storage::disk('public')->delete($employee->birth_file_path);
+                $resourceType = $this->cloudinary->getResourceType($employee->birth_file_path);
+                $this->cloudinary->delete($employee->birth_file_path, $resourceType);
             }
-            $path = $request->file('document')->storeAs('documents/birth', $filename, 'public');
-            $employee->update(['birth_file_path' => $path]);
+
+            $result = $isPdf
+                ? $this->cloudinary->uploadDocument($file, 'documents/birth/employee_' . $employee->id)
+                : $this->cloudinary->uploadImage($file, 'documents/birth/employee_' . $employee->id);
+
+            if (!$result['success']) {
+                return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+            }
+
+            $employee->update(['birth_file_path' => $result['public_id']]);
+
             return response()->json([
                 'message' => 'Birth certificate uploaded successfully',
-                'path' => $path,
-                'url' => Storage::disk('public')->url($path),
+                'path' => $result['public_id'],
+                'url' => $result['url'],
                 'applied' => true,
             ]);
         }
 
         // Employee: save to pending
-        $path = $request->file('document')->storeAs(
-            'documents/pending/employee_' . $employee->id,
-            'birth_' . time() . '.' . $ext,
-            'public'
+        $result = $isPdf
+            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/birth')
+            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/birth');
+
+        if (!$result['success']) {
+            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        }
+
+        $resourceType = $isPdf ? 'raw' : 'image';
+        $this->createDocumentUpdateRequestIfOwnProfile(
+            $employee,
+            'Birth certificate',
+            $result['public_id'],
+            ['employee_field' => 'birth_file_path'],
+            $resourceType
         );
 
-        Log::info("Birth certificate uploaded to pending: {$path} for employee #{$employee->id}");
-
         return response()->json([
-            'message' => 'Document uploaded to pending. Submit your profile changes for review.',
-            'path' => $path,
-            'url' => Storage::disk('public')->url($path),
+            'message' => 'Document submitted for admin approval.',
+            'path' => $result['public_id'],
+            'url' => $result['url'],
             'pending' => true,
             'field' => 'birth_file_path',
             'document_type' => 'Birth Certificate',
         ]);
     }
 
-    /**
-     * Delete document (NID or Birth Certificate) - Admin only
-     */
     public function deleteDocument(Request $request, $employeeId, $type)
     {
         $user = $request->user();
@@ -226,7 +268,8 @@ class FileController extends Controller
         $column = $type === 'nid' ? 'nid_file_path' : 'birth_file_path';
 
         if ($employee->$column) {
-            Storage::disk('public')->delete($employee->$column);
+            $resourceType = $this->cloudinary->getResourceType($employee->$column);
+            $this->cloudinary->delete($employee->$column, $resourceType);
             $employee->update([$column => null]);
         }
 
@@ -237,9 +280,6 @@ class FileController extends Controller
     // ACADEMIC CERTIFICATE UPLOADS
     // =========================================================
 
-    /**
-     * Upload academic certificate
-     */
     public function uploadAcademicCertificate(Request $request, $employeeId, $academicId)
     {
         $user = $request->user();
@@ -249,56 +289,70 @@ class FileController extends Controller
             return response()->json(['message' => 'Access denied'], 403);
         }
 
-        $academic = AcademicRecord::where('employee_id', $employeeId)
-            ->findOrFail($academicId);
+        $academic = AcademicRecord::where('employee_id', $employeeId)->findOrFail($academicId);
 
         $request->validate([
             'certificate' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        $examSlug = str_replace(['/', ' '], '_', $academic->exam_name ?? 'cert');
-        $ext = $request->file('certificate')->extension();
-        $filename = 'CERT_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . $examSlug . '_' . time() . '.' . $ext;
+        $file = $request->file('certificate');
+        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
 
         if ($isAdminUploadingForEmployee) {
             if ($academic->certificate_path) {
-                Storage::disk('public')->delete($academic->certificate_path);
+                $resourceType = $this->cloudinary->getResourceType($academic->certificate_path);
+                $this->cloudinary->delete($academic->certificate_path, $resourceType);
             }
-            $path = $request->file('certificate')->storeAs('documents/certificates', $filename, 'public');
-            $academic->update(['certificate_path' => $path]);
+
+            $result = $isPdf
+                ? $this->cloudinary->uploadDocument($file, 'documents/certificates/employee_' . $employee->id)
+                : $this->cloudinary->uploadImage($file, 'documents/certificates/employee_' . $employee->id);
+
+            if (!$result['success']) {
+                return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+            }
+
+            $academic->update(['certificate_path' => $result['public_id']]);
+
             return response()->json([
                 'message' => 'Certificate uploaded successfully',
-                'path' => $path,
-                'url' => Storage::disk('public')->url($path),
+                'path' => $result['public_id'],
+                'url' => $result['url'],
                 'applied' => true,
             ]);
         }
 
         // Employee: save to pending
-        $path = $request->file('certificate')->storeAs(
-            'documents/pending/employee_' . $employee->id,
-            'academic_' . $academic->id . '_' . time() . '.' . $ext,
-            'public'
+        $result = $isPdf
+            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/certificates')
+            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/certificates');
+
+        if (!$result['success']) {
+            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        }
+
+        $resourceType = $isPdf ? 'raw' : 'image';
+        $this->createDocumentUpdateRequestIfOwnProfile(
+            $employee,
+            'Academic certificate: ' . ($academic->exam_name ?? 'certificate'),
+            $result['public_id'],
+            ['academic_id' => $academic->id],
+            $resourceType
         );
 
-        Log::info("Academic certificate uploaded to pending: {$path} for employee #{$employee->id}, academic #{$academic->id}");
-
         return response()->json([
-            'message' => 'Certificate uploaded to pending. Submit your profile changes for review.',
-            'path' => $path,
-            'url' => Storage::disk('public')->url($path),
+            'message' => 'Certificate submitted for admin approval.',
+            'path' => $result['public_id'],
+            'url' => $result['url'],
             'pending' => true,
             'academic_id' => $academic->id,
             'document_type' => 'Academic Certificate: ' . ($academic->exam_name ?? 'Certificate'),
         ]);
     }
 
-    /**
-     * Delete academic certificate - Admin only
-     */
     public function deleteAcademicCertificate(Request $request, $employeeId, $academicId)
     {
         $user = $request->user();
@@ -308,11 +362,11 @@ class FileController extends Controller
             return response()->json(['message' => 'Only admins can delete certificates directly'], 403);
         }
 
-        $academic = AcademicRecord::where('employee_id', $employeeId)
-            ->findOrFail($academicId);
+        $academic = AcademicRecord::where('employee_id', $employeeId)->findOrFail($academicId);
 
         if ($academic->certificate_path) {
-            Storage::disk('public')->delete($academic->certificate_path);
+            $resourceType = $this->cloudinary->getResourceType($academic->certificate_path);
+            $this->cloudinary->delete($academic->certificate_path, $resourceType);
             $academic->update(['certificate_path' => null]);
         }
 
@@ -323,9 +377,6 @@ class FileController extends Controller
     // CHILD BIRTH CERTIFICATE UPLOADS
     // =========================================================
 
-    /**
-     * Upload child's birth certificate
-     */
     public function uploadChildBirthCertificate(Request $request, $employeeId, $familyMemberId)
     {
         $user = $request->user();
@@ -343,49 +394,64 @@ class FileController extends Controller
             'certificate' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
 
-        $childNameSlug = str_replace(' ', '_', $child->name ?? 'child');
-        $ext = $request->file('certificate')->extension();
-        $filename = 'CHILD_BIRTH_' . ($employee->nid_number ?: 'emp' . $employee->id) . '_' . $childNameSlug . '_' . time() . '.' . $ext;
+        $file = $request->file('certificate');
+        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
 
         if ($isAdminUploadingForEmployee) {
             if ($child->birth_certificate_path) {
-                Storage::disk('public')->delete($child->birth_certificate_path);
+                $resourceType = $this->cloudinary->getResourceType($child->birth_certificate_path);
+                $this->cloudinary->delete($child->birth_certificate_path, $resourceType);
             }
-            $path = $request->file('certificate')->storeAs('documents/children', $filename, 'public');
-            $child->update(['birth_certificate_path' => $path]);
+
+            $result = $isPdf
+                ? $this->cloudinary->uploadDocument($file, 'documents/children/employee_' . $employee->id)
+                : $this->cloudinary->uploadImage($file, 'documents/children/employee_' . $employee->id);
+
+            if (!$result['success']) {
+                return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+            }
+
+            $child->update(['birth_certificate_path' => $result['public_id']]);
+
             return response()->json([
                 'message' => 'Child birth certificate uploaded successfully',
-                'path' => $path,
-                'url' => Storage::disk('public')->url($path),
+                'path' => $result['public_id'],
+                'url' => $result['url'],
                 'applied' => true,
             ]);
         }
 
         // Employee: save to pending
-        $path = $request->file('certificate')->storeAs(
-            'documents/pending/employee_' . $employee->id,
-            'child_birth_' . $child->id . '_' . time() . '.' . $ext,
-            'public'
+        $result = $isPdf
+            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/children')
+            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/children');
+
+        if (!$result['success']) {
+            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        }
+
+        $resourceType = $isPdf ? 'raw' : 'image';
+        $this->createDocumentUpdateRequestIfOwnProfile(
+            $employee,
+            'Child birth certificate: ' . ($child->name ?? 'child'),
+            $result['public_id'],
+            ['family_member_id' => $child->id],
+            $resourceType
         );
 
-        Log::info("Child birth certificate uploaded to pending: {$path} for employee #{$employee->id}, child #{$child->id}");
-
         return response()->json([
-            'message' => 'Certificate uploaded to pending. Submit your profile changes for review.',
-            'path' => $path,
-            'url' => Storage::disk('public')->url($path),
+            'message' => 'Certificate submitted for admin approval.',
+            'path' => $result['public_id'],
+            'url' => $result['url'],
             'pending' => true,
             'family_member_id' => $child->id,
             'document_type' => 'Child Birth Certificate: ' . ($child->name ?? 'Child'),
         ]);
     }
 
-    /**
-     * Delete child's birth certificate - Admin only
-     */
     public function deleteChildBirthCertificate(Request $request, $employeeId, $familyMemberId)
     {
         $user = $request->user();
@@ -400,7 +466,8 @@ class FileController extends Controller
             ->findOrFail($familyMemberId);
 
         if ($child->birth_certificate_path) {
-            Storage::disk('public')->delete($child->birth_certificate_path);
+            $resourceType = $this->cloudinary->getResourceType($child->birth_certificate_path);
+            $this->cloudinary->delete($child->birth_certificate_path, $resourceType);
             $child->update(['birth_certificate_path' => null]);
         }
 
@@ -408,18 +475,14 @@ class FileController extends Controller
     }
 
     // =========================================================
-    // CLEANUP PENDING FILES
+    // PENDING FILES MANAGEMENT
     // =========================================================
 
-    /**
-     * Delete a specific pending file (e.g., when user removes before submitting)
-     */
     public function deletePendingFile(Request $request, $employeeId)
     {
         $user = $request->user();
         $employee = Employee::findOrFail($employeeId);
 
-        // Only the employee themselves or admin can delete their pending files
         if ((int) $user->employee_id !== (int) $employee->id && !$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
             return response()->json(['message' => 'Access denied'], 403);
         }
@@ -431,58 +494,26 @@ class FileController extends Controller
         $path = $request->path;
 
         // Security: ensure the path is within the employee's pending folder
-        $expectedPrefix = 'documents/pending/employee_' . $employee->id . '/';
-        if (!str_starts_with($path, $expectedPrefix)) {
+        $expectedPrefix = 'brems/pending/employee_' . $employee->id;
+        if (!str_contains($path, $expectedPrefix)) {
             return response()->json(['message' => 'Invalid file path'], 403);
         }
 
-        if (Storage::disk('public')->exists($path)) {
-            Storage::disk('public')->delete($path);
+        $resourceType = $this->cloudinary->getResourceType($path);
+        $deleted = $this->cloudinary->delete($path, $resourceType);
+
+        if ($deleted) {
             Log::info("Deleted pending file: {$path}");
             return response()->json(['message' => 'Pending file deleted successfully']);
         }
 
-        return response()->json(['message' => 'File not found'], 404);
-    }
-
-    /**
-     * Get list of pending files for an employee
-     */
-    public function getPendingFiles(Request $request, $employeeId)
-    {
-        $user = $request->user();
-        $employee = Employee::findOrFail($employeeId);
-
-        if ((int) $user->employee_id !== (int) $employee->id && !$user->isSuperAdmin() && !$user->isOfficeAdmin()) {
-            return response()->json(['message' => 'Access denied'], 403);
-        }
-
-        $pendingDir = 'documents/pending/employee_' . $employee->id;
-        $files = [];
-
-        if (Storage::disk('public')->exists($pendingDir)) {
-            $allFiles = Storage::disk('public')->files($pendingDir);
-            foreach ($allFiles as $filePath) {
-                $files[] = [
-                    'path' => $filePath,
-                    'url' => Storage::disk('public')->url($filePath),
-                    'name' => basename($filePath),
-                    'size' => Storage::disk('public')->size($filePath),
-                    'last_modified' => Storage::disk('public')->lastModified($filePath),
-                ];
-            }
-        }
-
-        return response()->json(['files' => $files]);
+        return response()->json(['message' => 'Failed to delete file'], 500);
     }
 
     // =========================================================
-    // FILE DOWNLOAD / VIEW
+    // FILE UTILITIES
     // =========================================================
 
-    /**
-     * Get file URL for viewing
-     */
     public function getFileUrl(Request $request)
     {
         $request->validate([
@@ -490,20 +521,19 @@ class FileController extends Controller
         ]);
 
         $path = $request->path;
+        $resourceType = $this->cloudinary->getResourceType($path);
+        $url = $this->cloudinary->getUrl($path, $resourceType);
 
-        if (!Storage::disk('public')->exists($path)) {
+        if (!$url) {
             return response()->json(['message' => 'File not found'], 404);
         }
 
         return response()->json([
-            'url' => Storage::disk('public')->url($path),
-            'exists' => true
+            'url' => $url,
+            'exists' => true,
         ]);
     }
 
-    /**
-     * Download file
-     */
     public function downloadFile(Request $request)
     {
         $request->validate([
@@ -511,11 +541,45 @@ class FileController extends Controller
         ]);
 
         $path = $request->path;
+        $resourceType = $this->cloudinary->getResourceType($path);
+        $url = $this->cloudinary->getUrl($path, $resourceType);
 
-        if (!Storage::disk('public')->exists($path)) {
+        if (!$url) {
             return response()->json(['message' => 'File not found'], 404);
         }
 
-        return Storage::disk('public')->download($path);
+        // Redirect to Cloudinary URL for download
+        return redirect($url);
+    }
+
+    /**
+     * Create a "Document Update" profile request when an employee uploads their own document.
+     * Admin can then approve (assign public_id to employee) or reject (delete from Cloudinary).
+     */
+    private function createDocumentUpdateRequestIfOwnProfile(
+        Employee $employee,
+        string $documentType,
+        string $publicId,
+        array $revertInfo,
+        string $resourceType = 'image'
+    ): void {
+        try {
+            ProfileRequest::create([
+                'employee_id' => $employee->id,
+                'request_type' => 'Document Update',
+                'details' => 'Uploaded: ' . $documentType,
+                'proposed_changes' => [
+                    'document_update' => array_merge([
+                        'type' => $documentType,
+                        'uploaded_at' => now()->toIso8601String(),
+                        'file_path' => $publicId,
+                        'resource_type' => $resourceType,
+                    ], $revertInfo),
+                ],
+                'status' => 'pending',
+            ]);
+        } catch (\Exception $e) {
+            Log::warning('Failed to create Document Update profile request: ' . $e->getMessage());
+        }
     }
 }

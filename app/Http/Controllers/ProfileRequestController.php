@@ -7,6 +7,7 @@ use App\Models\Employee;
 use App\Models\FamilyMember;
 use App\Models\Address;
 use App\Models\AcademicRecord;
+use App\Services\CloudinaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,12 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class ProfileRequestController extends Controller
 {
+    protected CloudinaryService $cloudinary;
+
+    public function __construct(CloudinaryService $cloudinary)
+    {
+        $this->cloudinary = $cloudinary;
+    }
     // =========================================================
     // LIST REQUESTS
     // =========================================================
@@ -392,14 +399,26 @@ class ProfileRequestController extends Controller
     }
 
     /**
-     * Apply pending documents - move from pending to final location
+     * Apply pending documents - Cloudinary: assign public_id; local: move from pending to final location
      */
     private function applyPendingDocuments(Employee $employee, array $pendingDocuments): void
     {
         foreach ($pendingDocuments as $doc) {
             $pendingPath = $doc['path'] ?? null;
-            if (!$pendingPath || !Storage::disk('public')->exists($pendingPath)) {
-                Log::warning('Pending document not found: ' . ($pendingPath ?? 'null'));
+            if (!$pendingPath) {
+                Log::warning('Pending document path is empty');
+                continue;
+            }
+
+            $isCloudinary = $this->cloudinary->isCloudinaryPath($pendingPath);
+
+            if ($isCloudinary) {
+                $this->applyCloudinaryPendingDoc($employee, $doc, $pendingPath);
+                continue;
+            }
+
+            if (!Storage::disk('public')->exists($pendingPath)) {
+                Log::warning('Pending document not found: ' . $pendingPath);
                 continue;
             }
 
@@ -489,7 +508,51 @@ class ProfileRequestController extends Controller
     }
 
     /**
-     * Revert/delete pending documents when request is rejected
+     * Apply a single pending document that is stored in Cloudinary (path = public_id).
+     */
+    private function applyCloudinaryPendingDoc(Employee $employee, array $doc, string $publicId): void
+    {
+        $resourceType = $doc['resource_type'] ?? $this->cloudinary->getResourceType($publicId);
+
+        if (!empty($doc['field'])) {
+            $field = $doc['field'];
+            if (!in_array($field, ['profile_picture', 'nid_file_path', 'birth_file_path'], true)) {
+                return;
+            }
+            if ($employee->$field) {
+                $this->cloudinary->delete($employee->$field, $this->cloudinary->getResourceType($employee->$field));
+            }
+            $employee->update([$field => $publicId]);
+            Log::info("Applied Cloudinary pending document: {$field} -> {$publicId}");
+            return;
+        }
+
+        if (!empty($doc['academic_id'])) {
+            $academic = AcademicRecord::where('employee_id', $employee->id)->find($doc['academic_id']);
+            if ($academic) {
+                if ($academic->certificate_path) {
+                    $this->cloudinary->delete($academic->certificate_path, $this->cloudinary->getResourceType($academic->certificate_path));
+                }
+                $academic->update(['certificate_path' => $publicId]);
+                Log::info("Applied Cloudinary pending academic certificate: {$academic->id} -> {$publicId}");
+            }
+            return;
+        }
+
+        if (!empty($doc['family_member_id'])) {
+            $member = FamilyMember::where('employee_id', $employee->id)->find($doc['family_member_id']);
+            if ($member) {
+                if ($member->birth_certificate_path) {
+                    $this->cloudinary->delete($member->birth_certificate_path, $this->cloudinary->getResourceType($member->birth_certificate_path));
+                }
+                $member->update(['birth_certificate_path' => $publicId]);
+                Log::info("Applied Cloudinary pending child birth certificate: {$member->id} -> {$publicId}");
+            }
+        }
+    }
+
+    /**
+     * Revert/delete pending documents when request is rejected (Cloudinary or local)
      */
     private function revertPendingDocuments(ProfileRequest $profileRequest): void
     {
@@ -498,35 +561,55 @@ class ProfileRequestController extends Controller
             return;
         }
 
-        // Handle new pending_documents structure
+        $deletePath = function ($path) {
+            if (!$path) {
+                return;
+            }
+            if ($this->cloudinary->isCloudinaryPath($path)) {
+                $resourceType = $this->cloudinary->getResourceType($path);
+                $this->cloudinary->delete($path, $resourceType);
+                Log::info("Deleted rejected Cloudinary document: {$path}");
+            } elseif (Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+                Log::info("Deleted rejected pending document: {$path}");
+            }
+        };
+
         if (isset($proposed['pending_documents']) && is_array($proposed['pending_documents'])) {
             foreach ($proposed['pending_documents'] as $doc) {
-                $path = $doc['path'] ?? null;
-                if ($path && Storage::disk('public')->exists($path)) {
-                    Storage::disk('public')->delete($path);
-                    Log::info("Deleted rejected pending document: {$path}");
-                }
+                $deletePath($doc['path'] ?? null);
             }
         }
 
-        // Handle legacy document_update structure
         if (isset($proposed['document_update'])) {
             $doc = $proposed['document_update'];
-            $path = $doc['file_path'] ?? null;
-            if ($path && Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-                Log::info("Deleted rejected legacy document: {$path}");
-            }
+            $deletePath($doc['file_path'] ?? null);
         }
     }
 
     /**
-     * Legacy: Apply document_update (backward compatibility)
+     * Legacy: Apply document_update (Cloudinary or local backward compatibility)
      */
     private function applyDocumentUpdateLegacy(Employee $employee, array $documentUpdate): void
     {
         $pendingPath = $documentUpdate['file_path'] ?? null;
-        if (!$pendingPath || !Storage::disk('public')->exists($pendingPath)) {
+        if (!$pendingPath) {
+            return;
+        }
+
+        if ($this->cloudinary->isCloudinaryPath($pendingPath)) {
+            $doc = [
+                'path' => $pendingPath,
+                'resource_type' => $documentUpdate['resource_type'] ?? $this->cloudinary->getResourceType($pendingPath),
+                'field' => $documentUpdate['employee_field'] ?? null,
+                'academic_id' => $documentUpdate['academic_id'] ?? null,
+                'family_member_id' => $documentUpdate['family_member_id'] ?? null,
+            ];
+            $this->applyCloudinaryPendingDoc($employee, $doc, $pendingPath);
+            return;
+        }
+
+        if (!Storage::disk('public')->exists($pendingPath)) {
             return;
         }
 
