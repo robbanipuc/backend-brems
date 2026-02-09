@@ -60,6 +60,18 @@ return [
             'report' => false,
         ],
 
+        /*
+        |--------------------------------------------------------------------------
+        | Cloudinary (used by Cloudinary Laravel package for API uploads)
+        |--------------------------------------------------------------------------
+        | The package resolves \Cloudinary\Cloudinary from filesystems.disks.cloudinary.
+        | Setting 'url' makes it use CLOUDINARY_URL for authenticated uploads.
+        */
+        'cloudinary' => [
+            'driver' => 'cloudinary',
+            'url' => env('CLOUDINARY_URL'),
+        ],
+
     ],
 
     /*
