@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\Employee;
 use App\Models\AcademicRecord;
 use App\Models\FamilyMember;
-use App\Models\ProfileRequest;
 use App\Services\CloudinaryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -81,16 +80,8 @@ class FileController extends Controller
             return response()->json(['message' => 'Upload failed: ' . $message], 500);
         }
 
-        $this->createDocumentUpdateRequestIfOwnProfile(
-            $employee,
-            'Profile picture',
-            $result['public_id'],
-            ['employee_field' => 'profile_picture'],
-            'image'
-        );
-
         return response()->json([
-            'message' => 'Photo submitted for admin approval. It will appear once approved.',
+            'message' => 'Photo uploaded. Submit your profile changes for approval to apply it.',
             'path' => $result['public_id'],
             'url' => $result['url'],
             'pending' => true,
@@ -172,17 +163,8 @@ class FileController extends Controller
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
         }
 
-        $resourceType = $isPdf ? 'raw' : 'image';
-        $this->createDocumentUpdateRequestIfOwnProfile(
-            $employee,
-            'NID document',
-            $result['public_id'],
-            ['employee_field' => 'nid_file_path'],
-            $resourceType
-        );
-
         return response()->json([
-            'message' => 'Document submitted for admin approval.',
+            'message' => 'Document uploaded. Submit your profile changes for approval to apply it.',
             'path' => $result['public_id'],
             'url' => $result['url'],
             'pending' => true,
@@ -243,17 +225,8 @@ class FileController extends Controller
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
         }
 
-        $resourceType = $isPdf ? 'raw' : 'image';
-        $this->createDocumentUpdateRequestIfOwnProfile(
-            $employee,
-            'Birth certificate',
-            $result['public_id'],
-            ['employee_field' => 'birth_file_path'],
-            $resourceType
-        );
-
         return response()->json([
-            'message' => 'Document submitted for admin approval.',
+            'message' => 'Document uploaded. Submit your profile changes for approval to apply it.',
             'path' => $result['public_id'],
             'url' => $result['url'],
             'pending' => true,
@@ -340,17 +313,8 @@ class FileController extends Controller
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
         }
 
-        $resourceType = $isPdf ? 'raw' : 'image';
-        $this->createDocumentUpdateRequestIfOwnProfile(
-            $employee,
-            'Academic certificate: ' . ($academic->exam_name ?? 'certificate'),
-            $result['public_id'],
-            ['academic_id' => $academic->id],
-            $resourceType
-        );
-
         return response()->json([
-            'message' => 'Certificate submitted for admin approval.',
+            'message' => 'Certificate uploaded. Submit your profile changes for approval to apply it.',
             'path' => $result['public_id'],
             'url' => $result['url'],
             'pending' => true,
@@ -439,17 +403,8 @@ class FileController extends Controller
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
         }
 
-        $resourceType = $isPdf ? 'raw' : 'image';
-        $this->createDocumentUpdateRequestIfOwnProfile(
-            $employee,
-            'Child birth certificate: ' . ($child->name ?? 'child'),
-            $result['public_id'],
-            ['family_member_id' => $child->id],
-            $resourceType
-        );
-
         return response()->json([
-            'message' => 'Certificate submitted for admin approval.',
+            'message' => 'Certificate uploaded. Submit your profile changes for approval to apply it.',
             'path' => $result['public_id'],
             'url' => $result['url'],
             'pending' => true,
@@ -556,36 +511,5 @@ class FileController extends Controller
 
         // Redirect to Cloudinary URL for download
         return redirect($url);
-    }
-
-    /**
-     * Create a "Document Update" profile request when an employee uploads their own document.
-     * Admin can then approve (assign public_id to employee) or reject (delete from Cloudinary).
-     */
-    private function createDocumentUpdateRequestIfOwnProfile(
-        Employee $employee,
-        string $documentType,
-        string $publicId,
-        array $revertInfo,
-        string $resourceType = 'image'
-    ): void {
-        try {
-            ProfileRequest::create([
-                'employee_id' => $employee->id,
-                'request_type' => 'Document Update',
-                'details' => 'Uploaded: ' . $documentType,
-                'proposed_changes' => [
-                    'document_update' => array_merge([
-                        'type' => $documentType,
-                        'uploaded_at' => now()->toIso8601String(),
-                        'file_path' => $publicId,
-                        'resource_type' => $resourceType,
-                    ], $revertInfo),
-                ],
-                'status' => 'pending',
-            ]);
-        } catch (\Exception $e) {
-            Log::warning('Failed to create Document Update profile request: ' . $e->getMessage());
-        }
     }
 }
