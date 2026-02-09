@@ -37,6 +37,6 @@ class PromotionHistory extends Model
      */
     public function getNewSalaryAttribute()
     {
-        return $this->newDesignation?->basic_salary ?? 0;
+        return $this->newDesignation ? (float) ($this->newDesignation->salary_min ?? 0) : 0;
     }
 }

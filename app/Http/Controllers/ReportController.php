@@ -125,7 +125,7 @@ class ReportController extends Controller
         $joiningTrends = $this->getJoiningTrends(clone $query);
 
         // Salary Distribution by Grade
-        $salaryByGrade = Designation::select('grade', DB::raw('AVG(basic_salary) as avg_salary'), DB::raw('MIN(basic_salary) as min_salary'), DB::raw('MAX(basic_salary) as max_salary'))
+        $salaryByGrade = Designation::select('grade', DB::raw('AVG(salary_min) as avg_salary'), DB::raw('MIN(salary_min) as min_salary'), DB::raw('MAX(salary_max) as max_salary'))
             ->groupBy('grade')
             ->orderBy('grade')
             ->get();
@@ -374,7 +374,7 @@ class ReportController extends Controller
         $query = PromotionHistory::with([
             'employee:id,first_name,last_name,nid_number,current_office_id',
             'employee.office:id,name,code',
-            'newDesignation:id,title,grade,basic_salary',
+            'newDesignation:id,title,grade,salary_min,salary_max',
             'createdBy:id,name'
         ]);
 
@@ -798,18 +798,24 @@ class ReportController extends Controller
         $user = $request->user();
 
         $requestResponse = $this->profileRequestReport($request);
+        if ($requestResponse->getStatusCode() !== 200) {
+            return $requestResponse;
+        }
         $requestData = json_decode($requestResponse->getContent(), true);
+        if (!is_array($requestData)) {
+            return response()->json(['message' => 'Failed to generate report data'], 500);
+        }
 
         $data = [
             'title' => 'Profile Request Report',
             'subtitle' => 'Bangladesh Railway - Employee Management System',
-            'generated_by' => $user->name,
+            'generated_by' => $user->name ?? 'System',
             'generated_at' => now()->format('d M Y, h:i A'),
             'from_date' => $request->from_date ?? 'All Time',
             'to_date' => $request->to_date ?? 'Present',
-            'summary' => $requestData['summary'],
-            'by_type' => $requestData['by_type'],
-            'requests' => $requestData['requests'],
+            'summary' => $requestData['summary'] ?? [],
+            'by_type' => $requestData['by_type'] ?? [],
+            'requests' => $requestData['requests'] ?? [],
         ];
 
         $pdf = Pdf::loadView('reports.profile_requests', $data)->setPaper('a4', 'landscape');

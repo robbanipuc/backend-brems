@@ -121,11 +121,10 @@ class FileController extends Controller
         }
 
         $request->validate([
-            'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'document' => 'required|file|mimes:jpg,jpeg,png|max:5120',
         ]);
 
         $file = $request->file('document');
-        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
@@ -136,9 +135,7 @@ class FileController extends Controller
                 $this->cloudinary->delete($employee->nid_file_path, $resourceType);
             }
 
-            $result = $isPdf
-                ? $this->cloudinary->uploadDocument($file, 'documents/nid/employee_' . $employee->id)
-                : $this->cloudinary->uploadImage($file, 'documents/nid/employee_' . $employee->id);
+            $result = $this->cloudinary->uploadImage($file, 'documents/nid/employee_' . $employee->id);
 
             if (!$result['success']) {
                 return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -155,9 +152,7 @@ class FileController extends Controller
         }
 
         // Employee: save to pending
-        $result = $isPdf
-            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/nid')
-            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/nid');
+        $result = $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/nid');
 
         if (!$result['success']) {
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -183,11 +178,10 @@ class FileController extends Controller
         }
 
         $request->validate([
-            'document' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'document' => 'required|file|mimes:jpg,jpeg,png|max:5120',
         ]);
 
         $file = $request->file('document');
-        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
@@ -198,9 +192,7 @@ class FileController extends Controller
                 $this->cloudinary->delete($employee->birth_file_path, $resourceType);
             }
 
-            $result = $isPdf
-                ? $this->cloudinary->uploadDocument($file, 'documents/birth/employee_' . $employee->id)
-                : $this->cloudinary->uploadImage($file, 'documents/birth/employee_' . $employee->id);
+            $result = $this->cloudinary->uploadImage($file, 'documents/birth/employee_' . $employee->id);
 
             if (!$result['success']) {
                 return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -217,9 +209,7 @@ class FileController extends Controller
         }
 
         // Employee: save to pending
-        $result = $isPdf
-            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/birth')
-            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/birth');
+        $result = $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/birth');
 
         if (!$result['success']) {
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -271,11 +261,10 @@ class FileController extends Controller
         $academic = AcademicRecord::where('employee_id', $employeeId)->findOrFail($academicId);
 
         $request->validate([
-            'certificate' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'certificate' => 'required|file|mimes:jpg,jpeg,png|max:5120',
         ]);
 
         $file = $request->file('certificate');
-        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
@@ -286,9 +275,7 @@ class FileController extends Controller
                 $this->cloudinary->delete($academic->certificate_path, $resourceType);
             }
 
-            $result = $isPdf
-                ? $this->cloudinary->uploadDocument($file, 'documents/certificates/employee_' . $employee->id)
-                : $this->cloudinary->uploadImage($file, 'documents/certificates/employee_' . $employee->id);
+            $result = $this->cloudinary->uploadImage($file, 'documents/certificates/employee_' . $employee->id);
 
             if (!$result['success']) {
                 return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -305,9 +292,7 @@ class FileController extends Controller
         }
 
         // Employee: save to pending
-        $result = $isPdf
-            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/certificates')
-            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/certificates');
+        $result = $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/certificates');
 
         if (!$result['success']) {
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -361,11 +346,10 @@ class FileController extends Controller
             ->findOrFail($familyMemberId);
 
         $request->validate([
-            'certificate' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'certificate' => 'required|file|mimes:jpg,jpeg,png|max:5120',
         ]);
 
         $file = $request->file('certificate');
-        $isPdf = $file->getClientOriginalExtension() === 'pdf';
 
         $isAdminUploadingForEmployee = ($user->isSuperAdmin() || $user->isOfficeAdmin())
             && (int) $user->employee_id !== (int) $employee->id;
@@ -376,9 +360,7 @@ class FileController extends Controller
                 $this->cloudinary->delete($child->birth_certificate_path, $resourceType);
             }
 
-            $result = $isPdf
-                ? $this->cloudinary->uploadDocument($file, 'documents/children/employee_' . $employee->id)
-                : $this->cloudinary->uploadImage($file, 'documents/children/employee_' . $employee->id);
+            $result = $this->cloudinary->uploadImage($file, 'documents/children/employee_' . $employee->id);
 
             if (!$result['success']) {
                 return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
@@ -395,9 +377,7 @@ class FileController extends Controller
         }
 
         // Employee: save to pending
-        $result = $isPdf
-            ? $this->cloudinary->uploadDocument($file, 'pending/employee_' . $employee->id . '/children')
-            : $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/children');
+        $result = $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/children');
 
         if (!$result['success']) {
             return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);

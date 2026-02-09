@@ -36,7 +36,13 @@ class ProfileRequestController extends Controller
         ])->latest();
 
         if ($user->isSuperAdmin()) {
-            // Super admin sees all requests
+            // Super admin: optional filter by office(s)
+            if ($request->filled('office_id')) {
+                $officeIds = is_array($request->office_id) ? $request->office_id : [$request->office_id];
+                $query->whereHas('employee', function ($eq) use ($officeIds) {
+                    $eq->whereIn('current_office_id', $officeIds);
+                });
+            }
         } elseif ($user->isOfficeAdmin()) {
             $officeIds = $user->getManagedOfficeIds();
 

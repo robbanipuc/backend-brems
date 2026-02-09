@@ -109,7 +109,7 @@ class HistoryController extends Controller
     public function employeePromotions(Request $request, $employeeId)
     {
         $promotions = PromotionHistory::with([
-            'newDesignation:id,title,grade,basic_salary',
+            'newDesignation:id,title,grade,salary_min,salary_max',
             'createdBy:id,name'
         ])
             ->where('employee_id', $employeeId)
@@ -137,7 +137,7 @@ class HistoryController extends Controller
         $promotion = PromotionHistory::with([
             'employee:id,first_name,last_name,nid_number,designation_id',
             'employee.designation:id,title,grade',
-            'newDesignation:id,title,grade,basic_salary',
+            'newDesignation:id,title,grade,salary_min,salary_max',
             'createdBy:id,name,email'
         ])->findOrFail($id);
 

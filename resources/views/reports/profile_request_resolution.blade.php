@@ -52,7 +52,7 @@
     <p>{{ $request->details }}</p>
     @endif
 
-    @if(!empty($proposed_changes))
+    @if(!empty($proposed_changes) && is_array($proposed_changes))
     <h3>Requested / Proposed Changes</h3>
     @if(!empty($proposed_changes['document_update']))
     <p><strong>Document / file update</strong></p>
@@ -61,21 +61,29 @@
         <tr><th>Uploaded at</th><td>{{ isset($proposed_changes['document_update']['uploaded_at']) ? \Carbon\Carbon::parse($proposed_changes['document_update']['uploaded_at'])->format('d M Y H:i') : '-' }}</td></tr>
     </table>
     @endif
+    @if(!empty($proposed_changes['pending_documents']) && is_array($proposed_changes['pending_documents']))
+    <p><strong>Pending documents</strong></p>
+    <table>
+        @foreach($proposed_changes['pending_documents'] as $doc)
+        <tr><th>Document</th><td>{{ $doc['document_type'] ?? 'File' }}</td></tr>
+        @endforeach
+    </table>
+    @endif
     <div class="changes-box">
-        @if(is_array($proposed_changes))
-            @foreach($proposed_changes as $key => $value)
-                @if($key === 'document_update') @continue @endif
-                <div><strong>{{ is_numeric($key) ? 'Item' : ucfirst(str_replace('_', ' ', $key)) }}:</strong>
-                    @if(is_array($value))
-                        <pre style="margin:4px 0; font-size:8pt;">{{ json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) }}</pre>
-                    @else
-                        {{ $value }}
-                    @endif
-                </div>
-            @endforeach
-        @else
-            {{ $proposed_changes }}
-        @endif
+        @foreach($proposed_changes as $key => $value)
+            @if(in_array($key, ['document_update', 'pending_documents'])) @continue @endif
+            <div><strong>{{ is_numeric($key) ? 'Item' : ucfirst(str_replace('_', ' ', $key)) }}:</strong>
+                @if(is_array($value))
+                    <table style="margin:4px 0; font-size:9pt;"><tbody>
+                    @foreach($value as $k => $v)
+                    <tr><td style="width:30%;">{{ is_numeric($k) ? '—' : ucfirst(str_replace('_', ' ', $k)) }}</td><td>{{ is_array($v) ? json_encode($v) : $v }}</td></tr>
+                    @endforeach
+                    </tbody></table>
+                @else
+                    {{ $value }}
+                @endif
+            </div>
+        @endforeach
     </div>
     @endif
 

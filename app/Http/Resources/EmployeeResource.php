@@ -42,7 +42,7 @@ class EmployeeResource extends JsonResource
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
             
             // Computed fields
-            'current_salary' => $this->designation?->basic_salary ?? 0,
+            'current_salary' => $this->designation ? (float) ($this->designation->salary_min ?? 0) : 0,
             'can_add_spouse' => $this->canAddSpouse(),
             'max_spouses' => $this->getMaxSpouses(),
             'active_spouse_count' => $this->activeSpouses()->count(),
@@ -54,7 +54,9 @@ class EmployeeResource extends JsonResource
                     'title' => $this->designation->title,
                     'title_bn' => $this->designation->title_bn,
                     'grade' => $this->designation->grade,
-                    'basic_salary' => $this->designation->basic_salary,
+                    'salary_min' => $this->designation->salary_min,
+                    'salary_max' => $this->designation->salary_max,
+                    'salary_range' => $this->designation->salary_range,
                 ];
             }),
             

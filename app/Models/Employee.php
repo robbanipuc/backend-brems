@@ -122,7 +122,7 @@ class Employee extends Model
 
     public function getCurrentSalaryAttribute()
     {
-        return $this->designation?->basic_salary ?? 0;
+        return $this->designation ? (float) ($this->designation->salary_min ?? 0) : 0;
     }
 
     // ==================== HELPER METHODS ====================
