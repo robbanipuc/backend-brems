@@ -225,7 +225,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/employees/{employeeId}/documents/birth', [FileController::class, 'uploadBirthCertificate']);
     Route::delete('/employees/{employeeId}/documents/{type}', [FileController::class, 'deleteDocument']);
 
-    // Academic Certificates
+    // Academic Certificates (pending-certificate must be before {academicId})
+    Route::post('/employees/{employeeId}/academics/pending-certificate', [FileController::class, 'uploadAcademicCertificatePending']);
     Route::post('/employees/{employeeId}/academics/{academicId}/certificate', [FileController::class, 'uploadAcademicCertificate']);
     Route::delete('/employees/{employeeId}/academics/{academicId}/certificate', [FileController::class, 'deleteAcademicCertificate']);
 

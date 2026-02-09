@@ -308,6 +308,45 @@ class FileController extends Controller
         ]);
     }
 
+    /**
+     * Upload certificate for a new (not yet saved) academic record - verified user only.
+     * Used when adding a new academic in Edit Profile; the certificate will be applied when the profile request is approved.
+     */
+    public function uploadAcademicCertificatePending(Request $request, $employeeId)
+    {
+        $user = $request->user();
+        $employee = Employee::findOrFail($employeeId);
+
+        if ((int) $user->employee_id !== (int) $employee->id) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $request->validate([
+            'certificate' => 'required|file|mimes:jpg,jpeg,png|max:5120',
+            'academic_index' => 'required|integer|min:0',
+            'exam_name' => 'nullable|string|max:100',
+        ]);
+
+        $file = $request->file('certificate');
+        $academicIndex = (int) $request->input('academic_index');
+        $examName = $request->input('exam_name', 'Certificate');
+
+        $result = $this->cloudinary->uploadImage($file, 'pending/employee_' . $employee->id . '/certificates');
+
+        if (!$result['success']) {
+            return response()->json(['message' => 'Upload failed: ' . $result['error']], 500);
+        }
+
+        return response()->json([
+            'message' => 'Certificate uploaded. Submit your profile changes for approval to apply it.',
+            'path' => $result['public_id'],
+            'url' => $result['url'],
+            'pending' => true,
+            'academic_index' => $academicIndex,
+            'document_type' => 'Academic Certificate: ' . $examName,
+        ]);
+    }
+
     public function deleteAcademicCertificate(Request $request, $employeeId, $academicId)
     {
         $user = $request->user();

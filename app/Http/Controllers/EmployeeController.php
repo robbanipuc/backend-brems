@@ -526,6 +526,7 @@ class EmployeeController extends Controller
 
             $employee->academics()->create([
                 'exam_name' => $record['exam_name'],
+                'board' => $record['board'] ?? null,
                 'institute' => $record['institute'] ?? null,
                 'passing_year' => $record['passing_year'] ?? null,
                 'result' => $record['result'] ?? null,

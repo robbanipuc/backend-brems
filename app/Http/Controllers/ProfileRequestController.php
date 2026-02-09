@@ -383,14 +383,15 @@ class ProfileRequestController extends Controller
             $this->applyAddressChanges($employee, $changes['addresses']);
         }
 
-        // 4. Academics
+        // 4. Academics (returns new academic IDs in order for pending certs by index)
+        $newAcademicIdsByIndex = [];
         if (isset($changes['academics']) && is_array($changes['academics'])) {
-            $this->applyAcademicChanges($employee, $changes['academics']);
+            $newAcademicIdsByIndex = $this->applyAcademicChanges($employee, $changes['academics']);
         }
 
         // 5. Pending Documents (unified document handling)
         if (isset($changes['pending_documents']) && is_array($changes['pending_documents'])) {
-            $this->applyPendingDocuments($employee, $changes['pending_documents']);
+            $this->applyPendingDocuments($employee, $changes['pending_documents'], $newAcademicIdsByIndex);
         }
 
         // 6. Legacy: document_update (backward compatibility)
@@ -405,9 +406,10 @@ class ProfileRequestController extends Controller
     }
 
     /**
-     * Apply pending documents - Cloudinary: assign public_id; local: move from pending to final location
+     * Apply pending documents - Cloudinary: assign public_id; local: move from pending to final location.
+     * @param array $newAcademicIdsByIndex New academic IDs in order (from applyAcademicChanges) for resolving academic_index
      */
-    private function applyPendingDocuments(Employee $employee, array $pendingDocuments): void
+    private function applyPendingDocuments(Employee $employee, array $pendingDocuments, array $newAcademicIdsByIndex = []): void
     {
         foreach ($pendingDocuments as $doc) {
             $pendingPath = $doc['path'] ?? null;
@@ -419,7 +421,7 @@ class ProfileRequestController extends Controller
             $isCloudinary = $this->cloudinary->isCloudinaryPath($pendingPath);
 
             if ($isCloudinary) {
-                $this->applyCloudinaryPendingDoc($employee, $doc, $pendingPath);
+                $this->applyCloudinaryPendingDoc($employee, $doc, $pendingPath, $newAcademicIdsByIndex);
                 continue;
             }
 
@@ -464,11 +466,15 @@ class ProfileRequestController extends Controller
                 continue;
             }
 
-            // Academic certificate
-            if (!empty($doc['academic_id'])) {
-                $academic = AcademicRecord::where('employee_id', $employee->id)->find($doc['academic_id']);
+            // Academic certificate (academic_id or academic_index for new academics)
+            $academicId = $doc['academic_id'] ?? null;
+            if ($academicId === null && isset($doc['academic_index']) && array_key_exists($doc['academic_index'], $newAcademicIdsByIndex)) {
+                $academicId = $newAcademicIdsByIndex[$doc['academic_index']];
+            }
+            if (!empty($academicId)) {
+                $academic = AcademicRecord::where('employee_id', $employee->id)->find($academicId);
                 if (!$academic) {
-                    Log::warning('Academic record not found: ' . $doc['academic_id']);
+                    Log::warning('Academic record not found: ' . $academicId);
                     continue;
                 }
 
@@ -515,8 +521,9 @@ class ProfileRequestController extends Controller
 
     /**
      * Apply a single pending document that is stored in Cloudinary (path = public_id).
+     * @param array $newAcademicIdsByIndex New academic IDs by index for resolving academic_index
      */
-    private function applyCloudinaryPendingDoc(Employee $employee, array $doc, string $publicId): void
+    private function applyCloudinaryPendingDoc(Employee $employee, array $doc, string $publicId, array $newAcademicIdsByIndex = []): void
     {
         $resourceType = $doc['resource_type'] ?? $this->cloudinary->getResourceType($publicId);
 
@@ -533,8 +540,12 @@ class ProfileRequestController extends Controller
             return;
         }
 
-        if (!empty($doc['academic_id'])) {
-            $academic = AcademicRecord::where('employee_id', $employee->id)->find($doc['academic_id']);
+        $academicId = $doc['academic_id'] ?? null;
+        if ($academicId === null && isset($doc['academic_index']) && array_key_exists($doc['academic_index'], $newAcademicIdsByIndex)) {
+            $academicId = $newAcademicIdsByIndex[$doc['academic_index']];
+        }
+        if (!empty($academicId)) {
+            $academic = AcademicRecord::where('employee_id', $employee->id)->find($academicId);
             if ($academic) {
                 if ($academic->certificate_path) {
                     $this->cloudinary->delete($academic->certificate_path, $this->cloudinary->getResourceType($academic->certificate_path));
@@ -871,21 +882,31 @@ class ProfileRequestController extends Controller
     // =========================================================
     // APPLY ACADEMIC CHANGES
     // =========================================================
-    private function applyAcademicChanges(Employee $employee, array $academics): void
+    /**
+     * Apply academic changes. Returns new academic IDs in the same order as $academics (for pending cert by index).
+     */
+    private function applyAcademicChanges(Employee $employee, array $academics): array
     {
         $employee->academics()->delete();
+        $newIds = [];
 
         foreach ($academics as $record) {
-            if (empty($record['exam_name'])) continue;
+            if (empty($record['exam_name'])) {
+                continue;
+            }
 
-            $employee->academics()->create([
+            $academic = $employee->academics()->create([
                 'exam_name' => $record['exam_name'],
+                'board' => $record['board'] ?? null,
                 'institute' => $record['institute'] ?? null,
                 'passing_year' => $record['passing_year'] ?? null,
                 'result' => $record['result'] ?? null,
                 'certificate_path' => $record['certificate_path'] ?? null,
             ]);
+            $newIds[] = $academic->id;
         }
+
+        return $newIds;
     }
 
     // =========================================================
