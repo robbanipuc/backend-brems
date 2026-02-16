@@ -739,7 +739,8 @@ class ProfileRequestController extends Controller
         $allowedFields = [
             'first_name', 'last_name', 'name_bn', 'nid_number', 'phone',
             'gender', 'dob', 'religion', 'blood_group', 'marital_status',
-            'place_of_birth', 'height', 'passport', 'birth_reg'
+            'place_of_birth', 'height', 'passport', 'birth_reg',
+            'cadre_type', 'batch_no'
         ];
 
         $updateData = [];
@@ -1037,6 +1038,8 @@ class ProfileRequestController extends Controller
                 'height' => $employee->height,
                 'passport' => $employee->passport,
                 'birth_reg' => $employee->birth_reg,
+                'cadre_type' => $employee->cadre_type,
+                'batch_no' => $employee->batch_no,
             ],
             'files' => [
                 'profile_picture' => $employee->profile_picture,

@@ -28,6 +28,8 @@
                 <th>Name</th>
                 <th>Designation</th>
                 <th>Office</th>
+                <th>Cadre</th>
+                <th>Batch No</th>
                 <th>NID</th>
                 <th>Status</th>
             </tr>
@@ -39,11 +41,13 @@
                 <td>{{ $emp->first_name }} {{ $emp->last_name }}</td>
                 <td>{{ optional($emp->designation)->title ?? 'N/A' }}</td>
                 <td>{{ optional($emp->office)->name ?? 'Unassigned' }}</td>
+                <td>{{ $emp->cadre_type ? ucfirst(str_replace('_', ' ', $emp->cadre_type)) : '-' }}</td>
+                <td>{{ $emp->batch_no ?? '-' }}</td>
                 <td>{{ $emp->nid_number ?? '-' }}</td>
                 <td>{{ ucfirst($emp->status ?? '-') }}</td>
             </tr>
             @empty
-            <tr><td colspan="6" style="text-align: center; padding: 20px;">No employees match the current filters.</td></tr>
+            <tr><td colspan="8" style="text-align: center; padding: 20px;">No employees match the current filters.</td></tr>
             @endforelse
         </tbody>
     </table>

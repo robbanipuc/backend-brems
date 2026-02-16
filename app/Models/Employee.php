@@ -67,6 +67,11 @@ class Employee extends Model
         return $this->hasMany(PromotionHistory::class)->orderBy('promotion_date', 'desc');
     }
 
+    public function punishments(): HasMany
+    {
+        return $this->hasMany(Punishment::class)->orderBy('order_date', 'desc');
+    }
+
     public function profileRequests(): HasMany
     {
         return $this->hasMany(ProfileRequest::class);

@@ -35,6 +35,8 @@ class EmployeeResource extends JsonResource
             'nid_file_path' => $this->nid_file_path,
             'birth_file_path' => $this->birth_file_path,
             'joining_date' => $this->joining_date?->format('Y-m-d'),
+            'cadre_type' => $this->cadre_type,
+            'batch_no' => $this->batch_no,
             'is_verified' => $this->is_verified,
             'status' => $this->status,
             'released_at' => $this->released_at?->format('Y-m-d'),

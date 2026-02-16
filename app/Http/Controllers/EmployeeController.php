@@ -118,6 +118,8 @@ class EmployeeController extends Controller
             'passport' => 'nullable|string|max:50',
             'birth_reg' => 'nullable|string|max:50',
             'joining_date' => 'nullable|date',
+            'cadre_type' => 'nullable|string|in:cadre,non_cadre',
+            'batch_no' => 'nullable|string|max:50',
         ]);
 
         // Determine target office
@@ -152,6 +154,8 @@ class EmployeeController extends Controller
                     'passport' => $validated['passport'] ?? null,
                     'birth_reg' => $validated['birth_reg'] ?? null,
                     'joining_date' => $validated['joining_date'] ?? now(),
+                    'cadre_type' => $validated['cadre_type'] ?? null,
+                    'batch_no' => $validated['batch_no'] ?? null,
                     'status' => 'active',
                     'is_verified' => false,
                 ]);
@@ -303,6 +307,8 @@ class EmployeeController extends Controller
             'height' => 'nullable|string|max:20',
             'passport' => 'nullable|string|max:50',
             'birth_reg' => 'nullable|string|max:50',
+            'cadre_type' => 'nullable|string|in:cadre,non_cadre',
+            'batch_no' => 'nullable|string|max:50',
         ]);
 
         $employee->update($validated);
@@ -332,7 +338,8 @@ class EmployeeController extends Controller
                 $basicFields = $request->only([
                     'first_name', 'last_name', 'name_bn', 'nid_number', 'phone',
                     'gender', 'dob', 'religion', 'blood_group', 'marital_status',
-                    'place_of_birth', 'height', 'passport', 'birth_reg'
+                    'place_of_birth', 'height', 'passport', 'birth_reg',
+                    'cadre_type', 'batch_no'
                 ]);
                 
                 if (!empty($basicFields)) {
@@ -956,8 +963,8 @@ class EmployeeController extends Controller
 
             // Header row
             fputcsv($file, [
-                'ID', 'Name (English)', 'Name (Bangla)', 'Designation', 'Office', 
-                'NID', 'Phone', 'Gender', 'Date of Birth', 'Religion', 
+                'ID', 'Name (English)', 'Name (Bangla)', 'Designation', 'Office',
+                'Cadre', 'Batch No', 'NID', 'Phone', 'Gender', 'Date of Birth', 'Religion',
                 'Blood Group', 'Status', 'Verified', 'Joining Date'
             ]);
 
@@ -968,6 +975,8 @@ class EmployeeController extends Controller
                     $emp->name_bn ?? '',
                     $emp->designation->title ?? 'N/A',
                     $emp->office->name ?? 'N/A',
+                    $emp->cadre_type ? ucfirst(str_replace('_', ' ', $emp->cadre_type)) : '',
+                    $emp->batch_no ?? '',
                     $emp->nid_number,
                     $emp->phone ?? '',
                     ucfirst($emp->gender ?? ''),

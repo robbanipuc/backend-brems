@@ -13,6 +13,7 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\HistoryController;
 use App\Http\Controllers\FileController;
+use App\Http\Controllers\PunishmentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -210,6 +211,20 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/transfers/{id}/attachment', [HistoryController::class, 'deleteTransferAttachment']);
         Route::put('/promotions/{id}', [HistoryController::class, 'updatePromotion']);
         Route::delete('/promotions/{id}/attachment', [HistoryController::class, 'deletePromotionAttachment']);
+    });
+
+    // =====================================================
+    // PUNISHMENTS
+    // =====================================================
+    Route::get('/punishments/types', [PunishmentController::class, 'types']);
+    Route::get('/employees/{employeeId}/punishments', [PunishmentController::class, 'index']);
+    Route::get('/punishments/{id}', [PunishmentController::class, 'show']);
+
+    Route::middleware('role:super_admin,office_admin')->group(function () {
+        Route::post('/punishments', [PunishmentController::class, 'store']);
+        Route::put('/punishments/{id}', [PunishmentController::class, 'update']);
+        Route::post('/punishments/{id}', [PunishmentController::class, 'update']); // multipart with file
+        Route::delete('/punishments/{id}', [PunishmentController::class, 'destroy']);
     });
 
     // =====================================================
