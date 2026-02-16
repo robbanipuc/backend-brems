@@ -69,6 +69,16 @@ class EmployeeController extends Controller
             $query->where('is_verified', $request->boolean('is_verified'));
         }
 
+        // Cadre type filter (cadre / non_cadre)
+        if ($request->filled('cadre_type')) {
+            $query->where('cadre_type', $request->cadre_type);
+        }
+
+        // Batch filter
+        if ($request->filled('batch_no')) {
+            $query->where('batch_no', $request->batch_no);
+        }
+
         // Only employees without a linked user (for linking user to employee)
         if ($request->boolean('without_user')) {
             $query->whereDoesntHave('user');
@@ -946,6 +956,12 @@ class EmployeeController extends Controller
         if ($request->has('is_verified')) {
             $query->where('is_verified', $request->boolean('is_verified'));
         }
+        if ($request->filled('cadre_type')) {
+            $query->where('cadre_type', $request->cadre_type);
+        }
+        if ($request->filled('batch_no')) {
+            $query->where('batch_no', $request->batch_no);
+        }
 
         $employees = $query->orderBy('first_name')->get();
 
@@ -1017,6 +1033,12 @@ class EmployeeController extends Controller
         if ($request->has('is_verified')) {
             $query->where('is_verified', $request->boolean('is_verified'));
         }
+        if ($request->filled('cadre_type')) {
+            $query->where('cadre_type', $request->cadre_type);
+        }
+        if ($request->filled('batch_no')) {
+            $query->where('batch_no', $request->batch_no);
+        }
 
         $employees = $query->orderBy('first_name')->get();
 
@@ -1034,6 +1056,12 @@ class EmployeeController extends Controller
         }
         if ($request->has('is_verified')) {
             $filterParts[] = 'Verified: ' . ($request->boolean('is_verified') ? 'Yes' : 'No');
+        }
+        if ($request->filled('cadre_type')) {
+            $filterParts[] = 'Cadre: ' . ucfirst(str_replace('_', ' ', $request->cadre_type));
+        }
+        if ($request->filled('batch_no')) {
+            $filterParts[] = 'Batch: ' . $request->batch_no;
         }
         $filter_applied = count($filterParts) > 0 ? implode('; ', $filterParts) : 'All';
 
