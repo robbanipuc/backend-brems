@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Designation extends Model
 {
     protected $fillable = [
+        'office_id',
         'title',
         'title_bn',
         'grade',
@@ -36,6 +38,11 @@ class Designation extends Model
     }
 
     // ==================== RELATIONSHIPS ====================
+
+    public function office(): BelongsTo
+    {
+        return $this->belongsTo(Office::class);
+    }
 
     public function employees(): HasMany
     {

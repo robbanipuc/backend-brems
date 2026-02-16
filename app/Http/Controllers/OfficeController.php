@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Office;
+use App\Models\Designation;
+use App\Models\Employee;
+use App\Models\OfficeDesignationPost;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class OfficeController extends Controller
@@ -216,6 +220,124 @@ class OfficeController extends Controller
         $office->delete();
 
         return response()->json(['message' => 'Office deleted successfully']);
+    }
+
+    /**
+     * Get vacant posts report for an office.
+     * Returns designations with Total Post (sanctioned), Posted (current employees), Vacant.
+     */
+    public function vacantPosts(Request $request, $id)
+    {
+        $user = $request->user();
+        $office = Office::findOrFail($id);
+
+        if (!$user->isSuperAdmin() && !in_array((int) $office->id, $user->getManagedOfficeIds())) {
+            return response()->json(['message' => 'Access denied to this office'], 403);
+        }
+
+        return response()->json($this->getVacantPostsData($id));
+    }
+
+    /**
+     * Update sanctioned posts (total_posts) for designations in an office.
+     * Body: { "posts": [ { "designation_id": 1, "total_posts": 5 }, ... ] }
+     */
+    public function updateDesignationPosts(Request $request, $id)
+    {
+        $user = $request->user();
+        $office = Office::findOrFail($id);
+
+        if (!$user->isSuperAdmin() && !in_array((int) $office->id, $user->getManagedOfficeIds())) {
+            return response()->json(['message' => 'Access denied to this office'], 403);
+        }
+
+        $validated = $request->validate([
+            'posts' => 'required|array',
+            'posts.*.designation_id' => 'required|exists:designations,id',
+            'posts.*.total_posts' => 'required|integer|min:0',
+        ]);
+
+        foreach ($validated['posts'] as $item) {
+            OfficeDesignationPost::updateOrCreate(
+                [
+                    'office_id' => $id,
+                    'designation_id' => $item['designation_id'],
+                ],
+                ['total_posts' => $item['total_posts']]
+            );
+        }
+
+        $data = $this->getVacantPostsData($id);
+        return response()->json([
+            'message' => 'Designation posts updated successfully',
+            'office' => $data['office'],
+            'rows' => $data['rows'],
+            'totals' => $data['totals'],
+        ]);
+    }
+
+    /**
+     * Build vacant posts data for an office (used by vacantPosts and updateDesignationPosts).
+     */
+    private function getVacantPostsData($officeId): array
+    {
+        $office = Office::findOrFail($officeId);
+        $designationIds = Designation::where(function ($q) use ($officeId) {
+            $q->where('office_id', $officeId)->orWhereNull('office_id');
+        })->pluck('id');
+
+        $postsMap = OfficeDesignationPost::where('office_id', $officeId)
+            ->whereIn('designation_id', $designationIds)
+            ->get()
+            ->keyBy('designation_id');
+
+        $postedCounts = Employee::where('current_office_id', $officeId)
+            ->where('status', 'active')
+            ->whereIn('designation_id', $designationIds)
+            ->select('designation_id', DB::raw('count(*) as posted'))
+            ->groupBy('designation_id')
+            ->pluck('posted', 'designation_id');
+
+        $designations = Designation::whereIn('id', $designationIds)
+            ->orderBy('title')
+            ->get(['id', 'title', 'title_bn', 'grade']);
+
+        $rows = [];
+        $totalSanctioned = 0;
+        $totalPosted = 0;
+
+        foreach ($designations as $d) {
+            $totalPosts = (int) ($postsMap->get($d->id)?->total_posts ?? 0);
+            $posted = (int) ($postedCounts->get($d->id) ?? 0);
+            $vacant = max(0, $totalPosts - $posted);
+
+            $rows[] = [
+                'designation_id' => $d->id,
+                'designation_name' => $d->title,
+                'designation_name_bn' => $d->title_bn,
+                'grade' => $d->grade,
+                'total_posts' => $totalPosts,
+                'posted' => $posted,
+                'vacant' => $vacant,
+            ];
+
+            $totalSanctioned += $totalPosts;
+            $totalPosted += $posted;
+        }
+
+        return [
+            'office' => [
+                'id' => $office->id,
+                'name' => $office->name,
+                'code' => $office->code,
+            ],
+            'rows' => $rows,
+            'totals' => [
+                'total_posts' => $totalSanctioned,
+                'posted' => $totalPosted,
+                'vacant' => max(0, $totalSanctioned - $totalPosted),
+            ],
+        ];
     }
 
     /**

@@ -10,10 +10,18 @@ class DesignationController extends Controller
     /**
      * List all designations
      * Available to all authenticated users (for dropdowns)
+     * When office_id is provided: returns designations for that office (office_id = X or office_id is null for "global" designations).
      */
     public function index(Request $request)
     {
-        $query = Designation::withCount('employees');
+        $query = Designation::with(['office:id,name,code'])->withCount('employees');
+
+        // Filter by office: designations belonging to this office OR global (null office_id)
+        if ($request->filled('office_id')) {
+            $query->where(function ($q) use ($request) {
+                $q->where('office_id', $request->office_id)->orWhereNull('office_id');
+            });
+        }
 
         // Optional: Sort by grade
         if ($request->boolean('sort_by_grade')) {
@@ -30,7 +38,7 @@ class DesignationController extends Controller
      */
     public function show($id)
     {
-        $designation = Designation::with(['employees' => function ($q) {
+        $designation = Designation::with(['office:id,name,code'])->with(['employees' => function ($q) {
             $q->where('status', 'active')
               ->select('id', 'first_name', 'last_name', 'designation_id', 'current_office_id')
               ->with('office:id,name');
@@ -45,6 +53,7 @@ class DesignationController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'office_id' => 'nullable|exists:offices,id',
             'title' => 'required|string|max:255',
             'title_bn' => 'nullable|string|max:255',
             'grade' => 'required|string|max:50',
@@ -70,6 +79,7 @@ class DesignationController extends Controller
         $designation = Designation::findOrFail($id);
 
         $validated = $request->validate([
+            'office_id' => 'nullable|exists:offices,id',
             'title' => 'sometimes|string|max:255',
             'title_bn' => 'nullable|string|max:255',
             'grade' => 'sometimes|string|max:50',

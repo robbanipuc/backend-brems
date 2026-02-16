@@ -78,6 +78,16 @@ class Office extends Model
         return $this->hasMany(Employee::class, 'current_office_id');
     }
 
+    public function designations(): HasMany
+    {
+        return $this->hasMany(Designation::class);
+    }
+
+    public function designationPosts(): HasMany
+    {
+        return $this->hasMany(OfficeDesignationPost::class);
+    }
+
     public function users(): HasMany
     {
         return $this->hasMany(User::class);

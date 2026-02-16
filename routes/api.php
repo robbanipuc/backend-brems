@@ -67,6 +67,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/offices', [OfficeController::class, 'index']);
     Route::get('/offices/tree', [OfficeController::class, 'tree']);
     Route::get('/offices/managed', [OfficeController::class, 'managed']);
+    Route::get('/offices/{id}/vacant-posts', [OfficeController::class, 'vacantPosts']);
+    Route::put('/offices/{id}/designation-posts', [OfficeController::class, 'updateDesignationPosts']);
     Route::get('/offices/{id}', [OfficeController::class, 'show']);
 
     // Super Admin Only
