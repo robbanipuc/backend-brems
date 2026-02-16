@@ -6,9 +6,11 @@ use App\Models\Office;
 use App\Models\Designation;
 use App\Models\Employee;
 use App\Models\OfficeDesignationPost;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OfficeController extends Controller
 {
@@ -362,5 +364,146 @@ class OfficeController extends Controller
         });
 
         return response()->json($offices);
+    }
+
+    /**
+     * Export vacant posts report for an office as PDF.
+     */
+    public function exportVacantPostsPdf(Request $request, $id)
+    {
+        $user = $request->user();
+        $office = Office::findOrFail($id);
+        if (! $user->isSuperAdmin() && ! in_array((int) $id, $user->getManagedOfficeIds())) {
+            return response()->json(['message' => 'Access denied to this office'], 403);
+        }
+        $data = $this->getVacantPostsData($id);
+        $data['generated_by'] = $user->name;
+        $data['generated_at'] = now()->format('d M Y, h:i A');
+        $data['title'] = 'Vacant Posts (Sanctioned Strength)';
+        $data['subtitle'] = 'Bangladesh Railway - Employee Management System';
+        $pdf = Pdf::loadView('reports.vacant_posts', $data)->setPaper('a4', 'landscape');
+        return $pdf->download('vacant_posts_' . $office->code . '_' . date('Ymd_His') . '.pdf');
+    }
+
+    /**
+     * Export vacant posts report for an office as CSV.
+     */
+    public function exportVacantPostsCsv(Request $request, $id)
+    {
+        $user = $request->user();
+        $office = Office::findOrFail($id);
+        if (! $user->isSuperAdmin() && ! in_array((int) $id, $user->getManagedOfficeIds())) {
+            return response()->json(['message' => 'Access denied to this office'], 403);
+        }
+        $data = $this->getVacantPostsData($id);
+        $filename = 'vacant_posts_' . preg_replace('/[^a-z0-9_-]/i', '_', $office->code) . '_' . date('Ymd_His') . '.csv';
+        return $this->csvResponse($filename, function () use ($data) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Designation Name', 'Total Post', 'Posted', 'Vacant Post']);
+            foreach ($data['rows'] as $row) {
+                fputcsv($out, [
+                    $row['designation_name'],
+                    $row['total_posts'],
+                    $row['posted'],
+                    $row['vacant'],
+                ]);
+            }
+            fputcsv($out, ['Total', $data['totals']['total_posts'], $data['totals']['posted'], $data['totals']['vacant']]);
+            fclose($out);
+        });
+    }
+
+    /**
+     * Export full office report (details, employees, posts/vacancies) as PDF.
+     */
+    public function exportOfficePdf(Request $request, $id)
+    {
+        $user = $request->user();
+        $office = Office::with([
+            'parent',
+            'employees' => function ($q) {
+                $q->where('status', 'active')->with('designation');
+            },
+        ])->findOrFail($id);
+        if (! $user->isSuperAdmin() && ! in_array((int) $id, $user->getManagedOfficeIds())) {
+            return response()->json(['message' => 'Access denied to this office'], 403);
+        }
+        $office->has_admin = $office->hasAdmin();
+        $office->admin = $office->users()->where('role', 'office_admin')->where('is_active', true)->first();
+        $vacantData = $this->getVacantPostsData($id);
+        $data = [
+            'office' => $office,
+            'vacant_rows' => $vacantData['rows'],
+            'vacant_totals' => $vacantData['totals'],
+            'title' => 'Office Report - ' . $office->name,
+            'subtitle' => 'Bangladesh Railway - Employee Management System',
+            'generated_by' => $user->name,
+            'generated_at' => now()->format('d M Y, h:i A'),
+        ];
+        $pdf = Pdf::loadView('reports.office_export', $data)->setPaper('a4', 'portrait');
+        return $pdf->download('office_' . preg_replace('/[^a-z0-9_-]/i', '_', $office->code) . '_' . date('Ymd_His') . '.pdf');
+    }
+
+    /**
+     * Export full office report (details, employees, posts/vacancies) as CSV.
+     */
+    public function exportOfficeCsv(Request $request, $id)
+    {
+        $user = $request->user();
+        $office = Office::with([
+            'parent',
+            'employees' => function ($q) {
+                $q->where('status', 'active')->with('designation');
+            },
+        ])->findOrFail($id);
+        if (! $user->isSuperAdmin() && ! in_array((int) $id, $user->getManagedOfficeIds())) {
+            return response()->json(['message' => 'Access denied to this office'], 403);
+        }
+        $office->has_admin = $office->hasAdmin();
+        $vacantData = $this->getVacantPostsData($id);
+        $filename = 'office_' . preg_replace('/[^a-z0-9_-]/i', '_', $office->code) . '_' . date('Ymd_His') . '.csv';
+        return $this->csvResponse($filename, function () use ($office, $vacantData) {
+            $out = fopen('php://output', 'w');
+            // Office details
+            fputcsv($out, ['Section', 'Field', 'Value']);
+            fputcsv($out, ['Office', 'Name', $office->name]);
+            fputcsv($out, ['Office', 'Code', $office->code]);
+            fputcsv($out, ['Office', 'Zone', $office->zone ?? 'Not assigned']);
+            fputcsv($out, ['Office', 'Location', $office->location ?? '']);
+            fputcsv($out, ['Office', 'Active Employees', $office->employees->count()]);
+            fputcsv($out, ['Office', 'Has Admin', $office->hasAdmin() ? 'Yes' : 'No']);
+            fputcsv($out, []);
+            // Employees
+            fputcsv($out, ['Employee', 'First Name', 'Last Name', 'Designation']);
+            foreach ($office->employees as $emp) {
+                fputcsv($out, [
+                    $emp->id,
+                    $emp->first_name ?? '',
+                    $emp->last_name ?? '',
+                    $emp->designation->title ?? '-',
+                ]);
+            }
+            fputcsv($out, []);
+            // Vacant posts
+            fputcsv($out, ['Designation', 'Total Post', 'Posted', 'Vacant']);
+            foreach ($vacantData['rows'] as $row) {
+                fputcsv($out, [$row['designation_name'], $row['total_posts'], $row['posted'], $row['vacant']]);
+            }
+            fputcsv($out, ['Total', $vacantData['totals']['total_posts'], $vacantData['totals']['posted'], $vacantData['totals']['vacant']]);
+            fclose($out);
+        });
+    }
+
+    /**
+     * Return a CSV stream response.
+     */
+    private function csvResponse(string $filename, callable $writer): StreamedResponse
+    {
+        return response()->streamDownload(function () use ($writer) {
+            $writer();
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 }

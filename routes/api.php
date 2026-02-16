@@ -68,6 +68,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/offices/tree', [OfficeController::class, 'tree']);
     Route::get('/offices/managed', [OfficeController::class, 'managed']);
     Route::get('/offices/{id}/vacant-posts', [OfficeController::class, 'vacantPosts']);
+    Route::get('/offices/{id}/vacant-posts/export-pdf', [OfficeController::class, 'exportVacantPostsPdf']);
+    Route::get('/offices/{id}/vacant-posts/export-csv', [OfficeController::class, 'exportVacantPostsCsv']);
+    Route::get('/offices/{id}/export-pdf', [OfficeController::class, 'exportOfficePdf']);
+    Route::get('/offices/{id}/export-csv', [OfficeController::class, 'exportOfficeCsv']);
     Route::put('/offices/{id}/designation-posts', [OfficeController::class, 'updateDesignationPosts']);
     Route::get('/offices/{id}', [OfficeController::class, 'show']);
 
