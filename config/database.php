@@ -58,21 +58,21 @@ return [
                         // 👇 REPLACE THE 'options' BLOCK WITH THIS:
                         // 👇 REPLACE THE 'options' BLOCK WITH THIS:
                         // 👇 REPLACE THE 'options' BLOCK WITH THIS:
-            'options' => extension_loaded('pdo_mysql') ? (
-                env('APP_ENV') === 'local' 
-                ? [
-                    // LOCALHOST (XAMPP):
-                    // We explicitly set this to FALSE. 
-                    // Since we aren't using array_filter, this setting will actually stay!
-                    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => false,
-                ]
-                : [
-                    // PRODUCTION (Render/TiDB):
-                    // We enforce SSL and provide the certificate
-                    PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-                    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true,
-                ]
-            ) : [],
+'options' => extension_loaded('pdo_mysql') ? (function () {
+    $options = [];
+
+    if ($ca = env('DB_SSL_CA_CONTENT')) {
+        $caPath = storage_path('app/tidb-ca.pem');
+
+        if (!file_exists($caPath)) {
+            file_put_contents($caPath, $ca);
+        }
+
+        $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
+    }
+
+    return $options;
+})() : [],
         ],
 
         'pgsql' => [
