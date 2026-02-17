@@ -22,6 +22,7 @@ return [
     'allowed_origins' => [
         'http://localhost:5173',
         'https://brems-frontend.vercel.app', 
+        'https://brems-frontend.vercel-henna.app', 
         'http://127.0.0.1:3000',
         'http://127.0.0.1:5173',
         env('FRONTEND_URL', 'http://localhost:3000'),
