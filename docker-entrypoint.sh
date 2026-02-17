@@ -43,21 +43,21 @@ php artisan cache:clear
 # ============================================
 # 4. Run migrations
 # ============================================
-echo "Running migrations..."
-php artisan migrate --force --verbose 2>&1 | tee /tmp/migration_output.log
+# echo "Running migrations..."
+# php artisan migrate --force --verbose 2>&1 | tee /tmp/migration_output.log
 
-MIGRATION_EXIT_CODE=${PIPESTATUS[0]}
+# MIGRATION_EXIT_CODE=${PIPESTATUS[0]}
 
-if [ $MIGRATION_EXIT_CODE -ne 0 ]; then
-    echo "============================================"
-    echo "MIGRATION FAILED (exit code: $MIGRATION_EXIT_CODE)"
-    echo "============================================"
-    cat /tmp/migration_output.log
-    echo ""
-    echo "Continuing with server startup anyway..."
-else
-    echo "Migrations completed successfully!"
-fi
+# if [ $MIGRATION_EXIT_CODE -ne 0 ]; then
+#     echo "============================================"
+#     echo "MIGRATION FAILED (exit code: $MIGRATION_EXIT_CODE)"
+#     echo "============================================"
+#     cat /tmp/migration_output.log
+#     echo ""
+#     echo "Continuing with server startup anyway..."
+# else
+#     echo "Migrations completed successfully!"
+# fi
 
 # ============================================
 # 5. Start Apache
